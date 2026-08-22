@@ -77,8 +77,13 @@ fire, matter more than raw swing speed does.
 Pick a mode on the title screen (remembered between sessions, with a separate
 best score for each):
 
+A wave runs 52 seconds and sends the same head-count it always did — they just
+arrive spread out rather than in a rush. All three cadence knobs (wave length,
+the gap inside a burst, and the between-wave trickle) live together in `WAVE`.
+
 Enemies also scale with the wave: +10% HP and +8% damage per wave past the
-first, multiplied by the mode's ramp.
+first, multiplied by the mode's ramp. Because waves now take twice as long,
+a given wave number is roughly twice as far into the run as it used to be.
 
 | Mode | Enemy HP & damage | Spawn rate & wave ramp | Loot drops |
 | --- | --- | --- | --- |
@@ -140,7 +145,7 @@ than sleeping, so it's fast and doesn't flake.
 
 ```sh
 cd stoneslinger
-node test/smoke.js            # 90 checks, exits non-zero on failure
+node test/smoke.js            # 93 checks, exits non-zero on failure
 node test/smoke.js --headed   # watch it run
 ```
 

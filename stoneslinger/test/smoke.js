@@ -15,6 +15,7 @@ const { execSync } = require('child_process');
 
 const PAGE = 'file://' + path.join(__dirname, '..', 'index.html');
 const HEADED = process.argv.includes('--headed');
+const WAVE_LEN = 52;
 
 function loadPlaywright() {
   try { return require('playwright'); } catch (e) {}
@@ -339,6 +340,30 @@ function shownInPage(sel) {
   eq('killing it leaves a stump', await page.evaluate('G.pads[0].rub'), 'grove');
   eq('replanting on it costs half', await page.evaluate('rebuildCost("grove")'), { wood: 12 });
   await page.evaluate('G.pads[0].rub = null; input.action = 0');
+
+  section('wave cadence');
+  /* Park the arrivals rather than let them fight: enemies that never die and
+     never land a hit make the spawn stream the only thing being measured. */
+  await page.evaluate('curDiff = "medium"');
+  const cad = await page.evaluate(() => {
+    startRun(); panelOpen = true;
+    G.player.hp = G.player.maxhp = 1e9; G.base.hp = G.base.maxhp = 1e9;
+    let inWave1 = 0, prev = 0, w1 = null, w2 = null;
+    for (let i = 0; i < 60 * 130; i++) {
+      update(1 / 60);
+      G.enemies.forEach(e => { e.x = 0; e.atkT = 99; });
+      if (G.enemies.length > prev && G.wave === 1) inWave1 += G.enemies.length - prev;
+      prev = G.enemies.length;
+      if (G.enemies.length > 18) { G.enemies.length = 0; prev = 0; }  // stay under the spawn cap
+      if (G.wave === 1 && w1 === null) w1 = G.t;
+      if (G.wave === 2 && w2 === null) w2 = G.t;
+    }
+    return { inWave1, period: w2 - w1 };
+  });
+  check('a wave runs about 52 seconds', Math.abs(cad.period - WAVE_LEN) < 1.5, cad);
+  eq('and still sends seven the first time round', cad.inWave1, 7);
+  eq('the cadence knobs stay in step', await page.evaluate(
+    '[WAVE.len, WAVE.gap, WAVE.trickle(1)]'), [52, 1.3, 13.3]);
 
   section('game over and retry');
   await page.evaluate('G.base.hp = 0');

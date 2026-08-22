@@ -429,6 +429,15 @@ let G={};
 let state='title';
 let best=loadBest();
 
+/* Wave cadence. Same head-count per wave, arriving at half the old rate: the
+   period, the gap between burst arrivals and the trickle curve are all doubled
+   together, so a wave is longer and thinner rather than smaller. */
+const WAVE={
+  first:10,                                   /* seconds before wave 1 */
+  len:52,                                     /* seconds per wave */
+  gap:1.3,                                    /* between arrivals within a burst */
+  trickle:w=>clamp(14-w*0.7, 4.4, 14),        /* between the between-wave stragglers */
+};
 function initGame(){
   best=loadBest();
   G={
@@ -445,7 +454,7 @@ function initGame(){
     base:{hp:100, maxhp:100},
     pads: PADS.map(off=>({x:BASE_X+off, b:null, rub:null})),
     nodes:[], enemies:[], projs:[], parts:[], pickups:[], floaters:[],
-    wave:0, waveT:5, trickleT:9*DIFFS[curDiff].spawnIv, burst:0, burstT:0,
+    wave:0, waveT:WAVE.first, trickleT:2*9*DIFFS[curDiff].spawnIv, burst:0, burstT:0,
     banner:null, over:false,
   };
   const N=(type,x)=>G.nodes.push({type,x,amount:type==='crystal'?4:6,max:type==='crystal'?4:6,t:0});
@@ -996,14 +1005,14 @@ function update(dt){
   G.waveT-=dt;
   if(G.waveT<=0){
     G.wave++;
-    G.waveT=26;
+    G.waveT=WAVE.len;
     G.burst=clamp(2+G.wave+D().burst,1,16); G.burstT=0.1;
     G.banner={txt:'WAVE '+G.wave,t:2.2};
     SFX.wave();
   }
-  if(G.burst>0){ G.burstT-=dt; if(G.burstT<=0){ G.burstT=0.65; G.burst--; spawnEnemy(); } }
+  if(G.burst>0){ G.burstT-=dt; if(G.burstT<=0){ G.burstT=WAVE.gap; G.burst--; spawnEnemy(); } }
   G.trickleT-=dt;
-  if(G.trickleT<=0){ spawnEnemy(); G.trickleT=clamp(7-G.wave*0.35,2.2,7)*D().spawnIv; }
+  if(G.trickleT<=0){ spawnEnemy(); G.trickleT=WAVE.trickle(G.wave)*D().spawnIv; }
 
   /* --- enemies --- */
   for(let i=G.enemies.length-1;i>=0;i--){
