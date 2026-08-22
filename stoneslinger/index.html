@@ -78,6 +78,16 @@
   @keyframes blink { 50% { opacity:0; } }
   @media (prefers-reduced-motion: reduce) { .blink { animation:none; } }
   .stat { font-size:clamp(9px,2.6vw,12px); color:#e8d5a9; line-height:2; }
+  .diffrow { display:flex; gap:12px; }
+  .dbtn {
+    font-family:'Press Start 2P', monospace; font-size:clamp(9px,2.6vw,12px);
+    padding:11px 14px; cursor:pointer;
+    background:rgba(36,29,22,.85); color:#9a8a6b;
+    border:3px solid #4a3826;
+  }
+  .dbtn:active { transform:translateY(1px); }
+  .dbtn.sel { background:#ffb347; color:#1a1410; border-color:#6b2f1f; }
+  .dlbl { font-size:clamp(7px,2vw,9px); color:#8a7a5f; margin-top:-6px; min-height:1em; }
   /* ---- workbench panel ---- */
   #panel {
     position:fixed; z-index:40; inset:0;
@@ -140,13 +150,22 @@
     &#9664;&#9654; MOVE &nbsp; &#9679; THROW &nbsp; &#10022; GATHER / BUILD<br>
     (KEYS: A/D MOVE, J THROW, K USE, Q SWAP)
   </div>
+  <div class="diffrow">
+    <button class="dbtn" data-d="easy">EASY</button>
+    <button class="dbtn sel" data-d="medium">MEDIUM</button>
+    <button class="dbtn" data-d="hard">HARD</button>
+  </div>
+  <div class="dlbl" id="diffLbl"></div>
   <div class="blink">TAP TO START</div>
 </div>
 
 <div class="overlay hidden" id="overO">
   <div class="title-big" style="color:#ff5a3c">THE FIRE<br>WENT OUT</div>
   <div class="stat" id="overStats"></div>
-  <div class="blink">TAP TO TRY AGAIN</div>
+  <div class="diffrow">
+    <button class="dbtn sel" id="retryB">RETRY</button>
+    <button class="dbtn" id="menuB">MENU</button>
+  </div>
 </div>
 
 <div id="panel" class="hidden">
@@ -367,14 +386,32 @@ function upCost(id){
   return c;
 }
 
+/* ---------- difficulty ---------- */
+const DIFFS={
+  easy:  {label:'EASY',   blurb:'GENTLER FOES, RICHER LOOT',
+          hp:0.7,  dmg:0.7, spawnIv:1.4,  burst:-1, ramp:0.7,  loot:1.35},
+  medium:{label:'MEDIUM', blurb:'THE INTENDED STRUGGLE',
+          hp:1,    dmg:1,   spawnIv:1,    burst:0,  ramp:1,    loot:1},
+  hard:  {label:'HARD',   blurb:'MORE OF THEM, MEANER, STINGIER',
+          hp:1.35, dmg:1.3, spawnIv:0.72, burst:2,  ramp:1.35, loot:0.85},
+};
+let curDiff='medium';
+try{ const d=localStorage.getItem('stoneslinger_diff'); if(DIFFS[d]) curDiff=d; }catch(e){}
+const D=()=>DIFFS[(G&&G.diff)||curDiff];
+function loadBest(){
+  try{ return parseInt(localStorage.getItem('stoneslinger_best_'+curDiff)||'0',10)||0; }
+  catch(e){ return 0; }
+}
+
 /* ---------- game state ---------- */
 let G={};
 let state='title';
-let best=0;
-try{ best=parseInt(localStorage.getItem('stoneslinger_best')||'0',10)||0; }catch(e){}
+let best=loadBest();
 
 function initGame(){
+  best=loadBest();
   G={
+    diff:curDiff,
     t:0, cam:0, kills:0,
     player:{x:BASE_X-20, y:GROUND, hp:20, maxhp:20, face:1, cool:0, anim:0,
             inv:0, dead:0, harvT:0, push:0, hurtT:99},
@@ -385,7 +422,7 @@ function initGame(){
     cur:'rock',
     base:{hp:100, maxhp:100},
     nodes:[], enemies:[], projs:[], parts:[], pickups:[], floaters:[],
-    wave:0, waveT:5, trickleT:9, burst:0, burstT:0,
+    wave:0, waveT:5, trickleT:9*DIFFS[curDiff].spawnIv, burst:0, burstT:0,
     banner:null, over:false,
   };
   const N=(type,x)=>G.nodes.push({type,x,amount:type==='crystal'?4:6,max:type==='crystal'?4:6,t:0});
@@ -424,13 +461,36 @@ addEventListener('keyup',e=>{ const k=e.key.toLowerCase(); if(KEY[k]!==undefined
 document.addEventListener('gesturestart',e=>e.preventDefault());
 document.addEventListener('pointerdown',()=>{ if(AC&&AC.state==='suspended')AC.resume(); });
 
-document.getElementById('titleO').addEventListener('pointerdown',()=>{
-  document.getElementById('titleO').classList.add('hidden');
-  state='play'; beep(220,440,0.2,'triangle',0.08);
+function updateDiffUI(){
+  document.querySelectorAll('#titleO .dbtn').forEach(b=>
+    b.classList.toggle('sel', b.dataset.d===curDiff));
+  document.getElementById('diffLbl').textContent=DIFFS[curDiff].blurb;
+}
+updateDiffUI();
+document.querySelectorAll('#titleO .dbtn').forEach(b=>{
+  b.addEventListener('pointerdown',e=>{
+    e.stopPropagation();
+    curDiff=b.dataset.d;
+    try{ localStorage.setItem('stoneslinger_diff',curDiff); }catch(err){}
+    updateDiffUI();
+    beep(300,420,0.05,'triangle',0.06);
+  });
 });
-document.getElementById('overO').addEventListener('pointerdown',()=>{
+function startRun(){
+  initGame(); refreshSwapBtn(); closePanel(); lastLbl=null; ctxLabel('');
+  document.getElementById('titleO').classList.add('hidden');
   document.getElementById('overO').classList.add('hidden');
-  initGame(); refreshSwapBtn(); state='play';
+  state='play'; beep(220,440,0.2,'triangle',0.08);
+}
+document.getElementById('titleO').addEventListener('pointerdown',startRun);
+document.getElementById('retryB').addEventListener('pointerdown',e=>{
+  e.stopPropagation(); startRun();
+});
+document.getElementById('menuB').addEventListener('pointerdown',e=>{
+  e.stopPropagation();
+  document.getElementById('overO').classList.add('hidden');
+  document.getElementById('titleO').classList.remove('hidden');
+  updateDiffUI(); state='title';
 });
 
 /* ---------- helpers ---------- */
@@ -491,17 +551,20 @@ function spawnEnemy(){
   const camL=G.cam-25, camR=G.cam+IW+25;
   if(x>camL && x<camR) x = side>0 ? Math.max(x,camR) : Math.min(x,camL);
   x=clamp(x,10,WORLD-10);
-  const hpMul=1+0.22*(w-1), dmgMul=1+0.08*(w-1), spdMul=1+0.02*w;
-  const D={
+  const dd=D();
+  const hpMul=(1+0.22*(w-1)*dd.ramp)*dd.hp,
+        dmgMul=(1+0.08*(w-1)*dd.ramp)*dd.dmg,
+        spdMul=1+0.02*w;
+  const ST={
     grub: {hp:4,  spd:21, dmg:4,  bdmg:4,  r:5, cd:1.0},
     brute:{hp:16, spd:11, dmg:9,  bdmg:11, r:7, cd:1.3},
     bat:  {hp:4,  spd:35, dmg:5,  bdmg:5,  r:5, cd:0.9},
   }[type];
   G.enemies.push({
     type, x, y: type==='bat'? GROUND-rnd(26,46) : GROUND,
-    hp:D.hp*hpMul, maxhp:D.hp*hpMul,
-    spd:D.spd*spdMul, dmg:D.dmg*dmgMul, bdmg:D.bdmg*dmgMul,
-    r:D.r, cd:D.cd, atkT:rnd(0,0.5), flash:0, bob:rnd(0,6),
+    hp:ST.hp*hpMul, maxhp:ST.hp*hpMul,
+    spd:ST.spd*spdMul, dmg:ST.dmg*dmgMul, bdmg:ST.bdmg*dmgMul,
+    r:ST.r, cd:ST.cd, atkT:rnd(0,0.5), flash:0, bob:rnd(0,6),
     get cy(){ return this.type==='bat'? this.y : GROUND-4; },
   });
 }
@@ -509,10 +572,10 @@ function killEnemy(e){
   G.kills++;
   burstParts(e.x,e.cy, e.type==='grub'?'#5a9e3c':e.type==='bat'?'#7a5296':'#7d7468', 10, 55);
   SFX.edie();
-  const r=Math.random();
-  if(r<0.22) G.pickups.push({x:e.x,y:e.cy,type:'stone',t:30});
-  else if(r<0.34) G.pickups.push({x:e.x,y:e.cy,type:'wood',t:30});
-  else if(G.wave>=4 && r<0.42) G.pickups.push({x:e.x,y:e.cy,type:'crystal',t:30});
+  const r=Math.random(), L=D().loot;
+  if(r<0.22*L) G.pickups.push({x:e.x,y:e.cy,type:'stone',t:30});
+  else if(r<0.34*L) G.pickups.push({x:e.x,y:e.cy,type:'wood',t:30});
+  else if(G.wave>=4 && r<0.42*L) G.pickups.push({x:e.x,y:e.cy,type:'crystal',t:30});
 }
 function hurtPlayer(dmg,fromX){
   const p=G.player;
@@ -679,13 +742,13 @@ function update(dt){
   if(G.waveT<=0){
     G.wave++;
     G.waveT=26;
-    G.burst=Math.min(2+G.wave,14); G.burstT=0.1;
+    G.burst=clamp(2+G.wave+D().burst,1,16); G.burstT=0.1;
     G.banner={txt:'WAVE '+G.wave,t:2.2};
     SFX.wave();
   }
   if(G.burst>0){ G.burstT-=dt; if(G.burstT<=0){ G.burstT=0.65; G.burst--; spawnEnemy(); } }
   G.trickleT-=dt;
-  if(G.trickleT<=0){ spawnEnemy(); G.trickleT=clamp(7-G.wave*0.35,2.2,7); }
+  if(G.trickleT<=0){ spawnEnemy(); G.trickleT=clamp(7-G.wave*0.35,2.2,7)*D().spawnIv; }
 
   /* --- enemies --- */
   for(let i=G.enemies.length-1;i>=0;i--){
@@ -779,10 +842,11 @@ function update(dt){
   /* --- game over --- */
   if(G.base.hp<=0 && !G.over){
     G.over=true; state='over'; SFX.fall();
-    if(G.kills>best){ best=G.kills; try{localStorage.setItem('stoneslinger_best',''+best);}catch(e){} }
+    if(G.kills>best){ best=G.kills;
+      try{localStorage.setItem('stoneslinger_best_'+G.diff,''+best);}catch(e){} }
     document.getElementById('overStats').innerHTML=
-      'SURVIVED '+G.wave+' WAVES &middot; '+Math.floor(G.t)+'S<br>'+
-      G.kills+' FOES CRUSHED<br>BEST: '+best+' FOES';
+      'SURVIVED '+G.wave+(G.wave===1?' WAVE':' WAVES')+' ON '+D().label+' &middot; '+Math.floor(G.t)+'S<br>'+
+      G.kills+' FOES CRUSHED<br>BEST ('+D().label+'): '+best+' FOES';
     document.getElementById('overO').classList.remove('hidden');
   }
 }
@@ -965,6 +1029,9 @@ function drawHUD(){
   ctx.fillStyle='#9a8a6b';
   const ktxt=G.kills+' KO';
   ctx.fillText(ktxt, IW-4-ktxt.length*8, 13);
+  ctx.fillStyle='#6b5f4a';
+  const dtxt=D().label;
+  ctx.fillText(dtxt, IW-4-dtxt.length*8, 23);
   /* resources */
   let rx=4;
   const res=[['wood','#c98a4b'],['stone','#b0a494'],['crystal','#5fe0d8']];

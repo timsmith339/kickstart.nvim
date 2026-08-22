@@ -25,6 +25,17 @@ Each weapon researches up to level 7 (+damage, +fire rate, +range). You can
 also repair the camp and sew a bigger bag. Waves get bigger and meaner forever;
 when the fire goes out, it's over.
 
+## Difficulty
+
+Pick a mode on the title screen (remembered between sessions, with a separate
+best score for each):
+
+| Mode | Enemy HP & damage | Spawn rate & wave ramp | Loot drops |
+| --- | --- | --- | --- |
+| Easy | −30% | slower, smaller bursts | +35% |
+| Medium | baseline | baseline | baseline |
+| Hard | +35% HP / +30% dmg | faster, bigger bursts | −15% |
+
 ## Running it
 
 It's a single self-contained `index.html` — no build, no dependencies.
