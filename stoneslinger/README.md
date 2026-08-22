@@ -9,7 +9,8 @@ rocks and working your way up the rock-throwing tech tree.
 - **◀ ▶** move (keyboard: `A`/`D`)
 - **●** hold to throw — auto-aims at the nearest enemy in range (keyboard: `J`)
 - **✦** gather from trees / rock piles / crystals, or open the workbench at camp (keyboard: `F`)
-- **↻** swap between crafted weapons (keyboard: `Q`)
+- **weapon rail** (bottom right) tap a weapon to equip it — locked ones show `---`
+  until you build them (keyboard: `1`-`4`, or `Q` to cycle)
 
 Loot you carry is stored automatically when you walk back to camp. Spend it at
 the workbench to craft and research:

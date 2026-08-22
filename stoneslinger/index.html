@@ -48,7 +48,28 @@
   #bR { left:86px;  bottom:calc(18px + env(safe-area-inset-bottom)); }
   #bAtk { right:14px; bottom:calc(18px + env(safe-area-inset-bottom)); width:70px; height:70px; font-size:24px; }
   #bAct { right:98px; bottom:calc(18px + env(safe-area-inset-bottom)); }
-  #bSwap { right:24px; bottom:calc(102px + env(safe-area-inset-bottom)); width:46px; height:46px; font-size:16px; display:none; }
+  /* weapon selector rail */
+  #wsel {
+    position:fixed; z-index:20;
+    right:14px; bottom:calc(104px + env(safe-area-inset-bottom));
+    display:none; gap:6px;
+  }
+  #wsel.on { display:flex; }
+  .wbtn {
+    width:48px; height:40px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    font-family:'Press Start 2P', monospace; font-size:7px; color:#c9b891;
+    background:rgba(36,29,22,.55);
+    border:3px solid rgba(232,213,169,.35);
+    box-shadow:0 0 0 3px rgba(12,10,20,.6);
+    border-radius:6px;
+    touch-action:none;
+  }
+  .wbtn .lv { font-size:6px; color:#8a7a5f; }
+  .wbtn.sel { color:#fff; background:rgba(255,179,71,.4); border-color:#ffb347; }
+  .wbtn.sel .lv { color:#ffd98a; }
+  .wbtn.lock { opacity:.4; color:#8a7a5f; }
+  .wbtn.lock .lv { color:#6b5f4a; }
   #ctxlbl {
     position:fixed; z-index:20; right:88px; bottom:calc(84px + env(safe-area-inset-bottom));
     font-size:8px; color:#ffb347; text-shadow:1px 1px 0 #0c0a14;
@@ -136,7 +157,7 @@
 <div class="btn" id="bR">&#9654;</div>
 <div class="btn" id="bAtk">&#9679;</div>
 <div class="btn" id="bAct">&#10022;</div>
-<div class="btn" id="bSwap">&#8635;</div>
+<div id="wsel"></div>
 <div id="ctxlbl"></div>
 <div class="btn" id="mute">&#9836;</div>
 <div id="rot"></div>
@@ -148,7 +169,7 @@
   DEFEND THE FIRE FROM BOTH SIDES.</div>
   <div class="sub" style="color:#8a7a5f">
     &#9664;&#9654; MOVE &nbsp; &#9679; THROW &nbsp; &#10022; GATHER / BUILD<br>
-    (KEYS: A/D MOVE, J THROW, F GATHER/BUILD, Q SWAP)
+    (KEYS: A/D MOVE, J THROW, F GATHER/BUILD, 1-4 OR Q WEAPON)
   </div>
   <div class="diffrow">
     <button class="dbtn" data-d="easy">EASY</button>
@@ -448,13 +469,13 @@ function bindBtn(id,name,tap){
 }
 bindBtn('bL','left'); bindBtn('bR','right');
 bindBtn('bAtk','attack'); bindBtn('bAct','action');
-bindBtn('bSwap',null,()=>swapWeapon());
 const KEY={a:'left',arrowleft:'left',d:'right',arrowright:'right',
            j:'attack',x:'attack',' ':'attack',f:'action',e:'action',arrowup:'action',z:'action'};
 addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
   if(KEY[k]!==undefined){ input[KEY[k]]=1; e.preventDefault(); }
   if(k==='q') swapWeapon();
+  if(k>='1' && k<='4') selectWeapon(WORDER[+k-1]);
   if(k==='escape') closePanel();
 });
 addEventListener('keyup',e=>{ const k=e.key.toLowerCase(); if(KEY[k]!==undefined) input[KEY[k]]=0; });
@@ -477,10 +498,10 @@ document.querySelectorAll('#titleO .dbtn').forEach(b=>{
   });
 });
 function startRun(){
-  initGame(); refreshSwapBtn(); closePanel(); lastLbl=null; ctxLabel('');
+  initGame(); closePanel(); lastLbl=null; ctxLabel('');
   document.getElementById('titleO').classList.add('hidden');
   document.getElementById('overO').classList.add('hidden');
-  state='play'; beep(220,440,0.2,'triangle',0.08);
+  state='play'; refreshWeaponSel(); beep(220,440,0.2,'triangle',0.08);
 }
 document.getElementById('titleO').addEventListener('pointerdown',startRun);
 document.getElementById('retryB').addEventListener('pointerdown',e=>{
@@ -490,7 +511,7 @@ document.getElementById('menuB').addEventListener('pointerdown',e=>{
   e.stopPropagation();
   document.getElementById('overO').classList.add('hidden');
   document.getElementById('titleO').classList.remove('hidden');
-  updateDiffUI(); state='title';
+  updateDiffUI(); state='title'; refreshWeaponSel();
 });
 
 /* ---------- helpers ---------- */
@@ -508,13 +529,51 @@ function costTxt(cost){
 function owned(){ return WORDER.filter(id=>G.levels[id]>0); }
 function swapWeapon(){
   const o=owned(); if(o.length<2) return;
-  G.cur=o[(o.indexOf(G.cur)+1)%o.length];
-  floater(G.player.x,GROUND-24,wstats(G.cur).name,'#ffb347');
+  setWeapon(o[(o.indexOf(G.cur)+1)%o.length]);
+}
+function selectWeapon(id){
+  if(!id || state!=='play') return;
+  if(!G.levels[id]){
+    SFX.denied();
+    floater(G.player.x,GROUND-24,'NOT BUILT','#ff5a3c');
+    return;
+  }
+  if(id===G.cur) return;
+  setWeapon(id);
+}
+function setWeapon(id){
+  G.cur=id;
+  floater(G.player.x,GROUND-24,wstats(id).name,'#ffb347');
   beep(330,440,0.06,'triangle',0.06);
+  refreshWeaponSel();
 }
-function refreshSwapBtn(){
-  document.getElementById('bSwap').style.display = owned().length>1?'flex':'none';
+/* one button per weapon, always in the same spot so muscle memory holds
+   as the tech tree unlocks */
+const WSHORT={rock:'ROCK', sling:'SLING', caster:'CAST', auto:'AUTO'};
+function buildWeaponSel(){
+  const rail=document.getElementById('wsel');
+  rail.innerHTML=WORDER.map((id,i)=>
+    '<div class="wbtn" data-w="'+id+'"><span>'+WSHORT[id]+'</span>'+
+    '<span class="lv" id="wlv_'+id+'">'+(i+1)+'</span></div>').join('');
+  rail.querySelectorAll('.wbtn').forEach(b=>{
+    b.addEventListener('pointerdown',e=>{
+      e.preventDefault(); e.stopPropagation();
+      selectWeapon(b.dataset.w);
+    });
+  });
 }
+function refreshWeaponSel(){
+  document.getElementById('wsel').classList.toggle('on', state==='play');
+  for(const id of WORDER){
+    const b=document.querySelector('.wbtn[data-w="'+id+'"]');
+    if(!b) continue;
+    const lv=(G&&G.levels[id])||0;
+    b.classList.toggle('lock', lv===0);
+    b.classList.toggle('sel', !!G && G.cur===id && lv>0);
+    document.getElementById('wlv_'+id).textContent = lv?('LV'+lv):'---';
+  }
+}
+buildWeaponSel();
 
 /* ---------- combat ---------- */
 function fire(){
@@ -654,7 +713,6 @@ function doBuy(act){
     if(!canAfford(c)) return SFX.denied();
     pay(c); G.levels[id]=1; G.cur=id;
     SFX.craft(); floater(BASE_X,GROUND-40,WDEF[id].name+'!','#ffb347');
-    refreshSwapBtn();
   }else if(kind==='up'){
     const c=upCost(id);
     if(!canAfford(c)||G.levels[id]>=MAXLV) return SFX.denied();
@@ -670,6 +728,7 @@ function doBuy(act){
     pay(c); G.capLv++; G.cap+=5;
     SFX.craft(); floater(BASE_X,GROUND-40,'BAG +5','#c98a4b');
   }
+  refreshWeaponSel();
   renderPanel();
 }
 
@@ -841,7 +900,7 @@ function update(dt){
 
   /* --- game over --- */
   if(G.base.hp<=0 && !G.over){
-    G.over=true; state='over'; SFX.fall();
+    G.over=true; state='over'; refreshWeaponSel(); SFX.fall();
     if(G.kills>best){ best=G.kills;
       try{localStorage.setItem('stoneslinger_best_'+G.diff,''+best);}catch(e){} }
     document.getElementById('overStats').innerHTML=
