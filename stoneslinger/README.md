@@ -1,8 +1,9 @@
 # Stoneslinger
 
-A pixel-art survival side-scroller for mobile browsers. Defend your camp fire
-from waves of critters attacking from both sides — starting with nothing but
-rocks and working your way up the rock-throwing tech tree.
+A pixel-art survival side-scroller for the browser. Defend your camp fire from
+waves of critters attacking from both sides — starting with nothing but rocks
+and working your way up the rock-throwing tech tree. Built for a desktop
+window; touch devices still get a thumb pad.
 
 ## How to play
 
@@ -10,7 +11,7 @@ rocks and working your way up the rock-throwing tech tree.
 - **●** hold to throw — auto-aims at the nearest enemy in range (keyboard: `J`)
 - **✦** gather from trees / rock piles / crystals, open the workbench at camp,
   or raise a defense when you're standing on a build pad (keyboard: `F`)
-- **weapon rail** (bottom right) tap a weapon to equip it — locked ones show `---`
+- **weapon rail** click or tap a weapon to equip it — locked ones show `---`
   until you build them (keyboard: `1`-`4`, or `Q` to cycle)
 
 Loot you carry is stored automatically when you walk back to camp. Spend it at
@@ -36,10 +37,14 @@ Six **build pads** sit along the lane, three either side of the fire at 70m,
 | --- | --- | --- |
 | Barricade | 20 wood | 90 HP of lashed stakes. Ground foes stop and chew through it instead of walking past. Bats fly over. |
 | Slinger Turret | 30 wood, 35 stone, 3 crystal | 60 HP. Fires on its own — DMG 3 at 0.9/sec, range 92. |
+| Grove | 24 wood (needs the Seed Pouch) | 70 HP. Takes 24s to come up, then bears 5 wood on a 20s cycle. Harvest it with ✦ like any tree. |
 
 Both block ground enemies, so a barricade out at 270m and a turret behind it at
 70m is worth more than two turrets side by side. Anything built can be repaired
 (cost scales with the damage) or salvaged for half its materials back.
+
+A sapling is too small to bother anyone, so a grove is safe while it grows;
+once it's up it blocks like a softer wall that keeps paying wood back.
 
 Knock one down and the wreck stays on the pad. It does nothing — it won't stop
 anyone — but the foundations count: **rebuilding costs half**. Clear the rubble
@@ -48,6 +53,24 @@ anyone — but the foundations count: **rebuilding costs half**. Clear the rubbl
 The point isn't surviving longer at the fire — it's that a turret holding a
 flank is what lets you walk out to the crystal fields at the edges of the map
 and still have a camp when you get home.
+
+## Camp tech
+
+The workbench has two tabs. **WEAPONS** is the research tree; **CAMP** is
+everything else. Each upgrade is costed in the materials it *doesn't* help you
+collect, so no single gathering loop can be specialised into while the other
+two go ignored.
+
+| | Levels | What it does |
+| --- | --- | --- |
+| Bigger Bag | ∞ | +5 carried per trip. |
+| Sharp Tools | 3 | Swing time 0.40s → 0.31 → 0.24 → 0.18. Less time stood still with your back to the lane. |
+| Deep Cuts | 2 | +1 resource per swing per level. The same node goes further. |
+| Seed Pouch | 1 | Unlocks the Grove. |
+
+Travel is the real cost in this game — a crystal run is about 21 seconds of
+walking for 4 seconds of swinging — so the bag, and groves you plant near the
+fire, matter more than raw swing speed does.
 
 ## Difficulty
 
@@ -66,16 +89,27 @@ first, multiplied by the mode's ramp.
 ## Running it
 
 It's a single self-contained `index.html` — no build, no dependencies.
-Open it in any browser, or serve the folder and visit it from your phone:
+Open it in any browser.
 
 ```sh
 cd stoneslinger
 python3 -m http.server 8000
-# then open http://<your-computer-ip>:8000 on your phone
 ```
 
-Landscape orientation recommended. On iOS/Android you can "Add to Home Screen"
-for a fullscreen app feel.
+The canvas is 560×270 internally and scales up in whole device-pixel steps, so
+it stays crisp at any window size. On a desktop the on-screen thumb pad is
+hidden and the weapon rail moves to the bottom centre — controls are:
+
+| | |
+| --- | --- |
+| `A` / `D` or `←` `→` | move |
+| `J` or `Space` | throw |
+| `F` | gather / build |
+| `1`–`4` or `Q` | swap weapon |
+| `Esc` | close panel |
+
+Touch devices still get the thumb pad and the tap-to-equip rail; landscape is
+recommended there.
 
 ## Developing
 
@@ -106,7 +140,7 @@ than sleeping, so it's fast and doesn't flake.
 
 ```sh
 cd stoneslinger
-node test/smoke.js            # 64 checks, exits non-zero on failure
+node test/smoke.js            # 90 checks, exits non-zero on failure
 node test/smoke.js --headed   # watch it run
 ```
 

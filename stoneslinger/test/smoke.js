@@ -58,7 +58,7 @@ function shownInPage(sel) {
 (async () => {
   const { chromium } = loadPlaywright();
   const browser = await chromium.launch({ headless: !HEADED });
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 
   const jsErrors = [];
   page.on('pageerror', e => jsErrors.push(String(e)));
@@ -76,6 +76,10 @@ function shownInPage(sel) {
   const tapRail = id => page.click(`.wbtn[data-w="${id}"]`);
 
   section('boot');
+  check('desktop layout on a fine pointer', await page.evaluate(
+    'document.body.classList.contains("desktop")'));
+  check('canvas scales to whole device pixels', await page.evaluate(
+    '(parseFloat(cv.style.width)/IW) % 0.5 === 0'));
   check('title overlay is up', await shown('#titleO'));
   check('weapon rail hidden on title', !(await shown('#wsel')));
   eq('four weapon buttons exist', await page.evaluate('document.querySelectorAll(".wbtn").length'), 4);
@@ -120,6 +124,40 @@ function shownInPage(sel) {
   eq('key 2 equips the slingshot', await page.evaluate('G.cur'), 'sling');
   await page.keyboard.press('q');
   eq('q cycles onward', await page.evaluate('G.cur'), 'caster');
+
+  section('workbench tabs');
+  await page.evaluate('openPanel(null)');
+  eq('two tabs', await page.evaluate('document.querySelectorAll("#pTabs .tab").length'), 2);
+  check('weapons showing first',
+        await page.evaluate('!!document.querySelector(\'[data-act^="up:"], [data-act^="craft:"]\')'));
+  await page.click('#pTabs .tab[data-tab="camp"]');
+  check('camp tab has the harvest tech',
+        await page.evaluate('!!document.querySelector(\'[data-act="tech:tools"]\')'));
+  check('and no weapon rows',
+        await page.evaluate('!document.querySelector(\'[data-act^="up:"]\')'));
+  await page.click('#pTabs .tab[data-tab="weapons"]');
+  check('and back again',
+        await page.evaluate('!!document.querySelector(\'[data-act^="up:"]\')'));
+  await page.evaluate('closePanel()');
+
+  section('harvest tech');
+  eq('a bare swing is 0.40s', await page.evaluate('harvTime()'), 0.4);
+  eq('and yields one', await page.evaluate('harvYield()'), 1);
+  await page.evaluate('G.stored = {wood:999, stone:999, crystal:999};' +
+                      'doBuy("tech:tools"); doBuy("tech:yield");');
+  check('sharp tools speed it up', await page.evaluate('harvTime()') < 0.4);
+  eq('deep cuts add to the take', await page.evaluate('harvYield()'), 2);
+  await page.evaluate(() => {
+    G.carried = { wood: 0, stone: 0, crystal: 0 };
+    const n = G.nodes.find(n => n.type === 'rock');
+    n.amount = n.max; G.player.x = n.x; G.player.hp = G.player.maxhp = 999;
+    G.enemies = []; input.action = 1;
+  });
+  await step(30);   // half a second: at least one swing at 0.31s
+  await page.evaluate('input.action = 0');
+  check('a single swing now banks two', await page.evaluate('G.carried.stone >= 2'),
+        await page.evaluate('G.carried'));
+  await page.evaluate('G.tech = {tools:0, yield:0, seeds:0}');
 
   section('gathering and the base');
   await page.evaluate(() => {
@@ -265,6 +303,43 @@ function shownInPage(sel) {
   check('but at most double after ten waves', w11 <= w1 * 2.05, { w1, w11 });
   await page.evaluate('G.enemies.length = 0');
 
+  section('groves');
+  await page.evaluate('G.stored = {wood:999, stone:999, crystal:999};' +
+                      'G.pads.forEach(p => { p.b = null; p.rub = null; });' +
+                      'G.enemies = []; G.player.hp = G.player.maxhp = 999; openPanel(G.pads[0]);');
+  check('no grove on offer without the seed pouch',
+        await page.evaluate('!document.querySelector(\'[data-act="build:grove"]\')'));
+  await page.evaluate('closePanel(); doBuy("tech:seeds"); openPanel(G.pads[0]);');
+  check('the seed pouch unlocks it',
+        await page.evaluate('!!document.querySelector(\'[data-act="build:grove"]\')'));
+  await page.evaluate('doBuy("build:grove"); closePanel();');
+  eq('planting puts a grove on the pad', await page.evaluate('G.pads[0].b.type'), 'grove');
+  eq('it starts as a sapling with nothing on it',
+     await page.evaluate('[G.pads[0].b.grow, G.pads[0].b.amount]'), [0, 0]);
+  eq('nothing stops to fight a sapling',
+     await page.evaluate('blockerFor(G.pads[0].x - 60, BASE_X)'), null);
+
+  await step(60 * 25);   // BDEF.grove.grow is 24s
+  eq('it matures', await page.evaluate('G.pads[0].b.grow'), 1);
+  eq('and bears', await page.evaluate('G.pads[0].b.amount'), await page.evaluate('BDEF.grove.yield'));
+  check('a grown grove blocks like any wall',
+        await page.evaluate('blockerFor(G.pads[0].x - 60, BASE_X) === G.pads[0]'));
+
+  await page.evaluate('G.carried = {wood:0, stone:0, crystal:0};' +
+                      'G.player.x = G.pads[0].x; input.action = 1;');
+  await step(60 * 4);
+  await page.evaluate('input.action = 0');
+  check('you can harvest it like any tree', await page.evaluate('G.carried.wood > 0'),
+        await page.evaluate('G.carried'));
+  eq('picking it clean starts a regrow', await page.evaluate('G.pads[0].b.amount'), 0);
+  check('on the grove timer, not the wild one',
+        await page.evaluate('G.pads[0].b.t > 0 && G.pads[0].b.t <= BDEF.grove.regrow'));
+
+  await page.evaluate('hurtBuild(G.pads[0], 999)');
+  eq('killing it leaves a stump', await page.evaluate('G.pads[0].rub'), 'grove');
+  eq('replanting on it costs half', await page.evaluate('rebuildCost("grove")'), { wood: 12 });
+  await page.evaluate('G.pads[0].rub = null; input.action = 0');
+
   section('game over and retry');
   await page.evaluate('G.base.hp = 0');
   await step(2);
@@ -275,6 +350,7 @@ function shownInPage(sel) {
   eq('retry starts a fresh run', await page.evaluate('state'), 'play');
   eq('and resets the tech tree', await page.evaluate('G.levels'),
      { rock: 1, sling: 0, caster: 0, auto: 0 });
+  eq('and the camp tech', await page.evaluate('G.tech'), { tools: 0, yield: 0, seeds: 0 });
   eq('and clears every pad', await page.evaluate('G.pads.filter(p => p.b).length'), 0);
   eq('and every wreck', await page.evaluate('G.pads.filter(p => p.rub).length'), 0);
   eq('rail resets too', await rail(), [

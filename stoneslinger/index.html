@@ -30,6 +30,7 @@
     image-rendering:crisp-edges;
     background:#161228;
   }
+  body.desktop canvas { box-shadow:0 0 0 3px #241d16, 0 0 0 6px #0c0a14; }
   /* ---- touch controls ---- */
   .btn {
     position:fixed; z-index:20;
@@ -116,13 +117,22 @@
     background:rgba(12,10,20,.7);
   }
   #panelbox {
-    width:min(94vw,560px); max-height:88vh; overflow-y:auto;
+    width:min(94vw,620px); max-height:88vh; overflow-y:auto;
     background:#241d16;
     border:3px solid #8a6b3f;
     box-shadow:0 0 0 3px #0c0a14, 0 0 0 6px #4a3826;
     padding:14px;
   }
   #panelbox h2 { font-size:13px; color:#ffb347; margin-bottom:4px; }
+  #pTabs { display:flex; gap:6px; margin:12px 0 2px; }
+  #pTabs:empty { display:none; }
+  .tab {
+    font-family:'Press Start 2P', monospace; font-size:9px;
+    padding:8px 12px; cursor:pointer;
+    background:#1a1510; color:#8a7a5f;
+    border:2px solid #3a2f22; border-bottom:none;
+  }
+  .tab.on { background:#3a2f22; color:#ffb347; border-color:#8a6b3f; }
   #panelbox .res { font-size:9px; margin:8px 0 12px; line-height:1.8; }
   .chip { display:inline-block; padding:1px 4px; margin-right:4px; font-size:8px; }
   .cw { color:#c98a4b; } .cs { color:#b0a494; } .cc { color:#5fe0d8; }
@@ -150,8 +160,22 @@
   }
   #rot { position:fixed; z-index:25; left:0; right:0; bottom:2px; text-align:center;
     font-size:7px; color:#6b5f4a; pointer-events:none; }
+  /* ---- desktop: keyboard drives it, so the thumb pad goes away and the rail
+         and prompt move to the middle where the eye already is ---- */
+  body.desktop #bL, body.desktop #bR, body.desktop #bAtk,
+  body.desktop #bAct, body.desktop #rot { display:none; }
+  body.desktop #wsel {
+    left:0; right:0; bottom:14px; gap:10px; justify-content:center;
+  }
+  body.desktop .wbtn { width:70px; height:52px; font-size:8px; cursor:pointer; }
+  body.desktop .wbtn .lv { font-size:7px; }
+  body.desktop #ctxlbl {
+    left:0; right:0; bottom:74px; width:auto; font-size:10px;
+  }
+  body.desktop .touchonly { display:none; }
+  body:not(.desktop) .deskonly { display:none; }
 </style>
-<div id="wrap"><canvas id="cv" width="384" height="216"></canvas></div>
+<div id="wrap"><canvas id="cv" width="560" height="270"></canvas></div>
 
 <div class="btn" id="bL">&#9664;</div>
 <div class="btn" id="bR">&#9654;</div>
@@ -166,10 +190,13 @@
   <div class="title-big">STONESLINGER</div>
   <div class="sub">THROW ROCKS. GATHER WOOD + STONE.<br>
   BUILD BETTER ROCK-THROWERS AT YOUR CAMP.<br>
-  RAISE WALLS AND TURRETS SO YOU CAN LEAVE IT.</div>
+  RAISE WALLS, TURRETS AND GROVES SO YOU CAN LEAVE IT.</div>
   <div class="sub" style="color:#8a7a5f">
-    &#9664;&#9654; MOVE &nbsp; &#9679; THROW &nbsp; &#10022; GATHER / BUILD<br>
-    (KEYS: A/D MOVE, J THROW, F GATHER/BUILD, 1-4 OR Q WEAPON)
+    <span class="touchonly">&#9664;&#9654; MOVE &nbsp; &#9679; THROW &nbsp; &#10022; GATHER / BUILD<br>
+    (KEYS: A/D MOVE, J THROW, F GATHER/BUILD, 1-4 OR Q WEAPON)</span>
+    <span class="deskonly">A / D &nbsp;OR&nbsp; &#9664;&#9654; &nbsp; MOVE<br>
+    J &nbsp;OR&nbsp; SPACE &nbsp; THROW &nbsp;&middot;&nbsp; F &nbsp; GATHER / BUILD<br>
+    1-4 &nbsp;OR&nbsp; Q &nbsp; SWAP WEAPON &nbsp;&middot;&nbsp; ESC &nbsp; CLOSE PANEL</span>
   </div>
   <div class="diffrow">
     <button class="dbtn" data-d="easy">EASY</button>
@@ -193,6 +220,7 @@
   <div id="panelbox">
     <button id="closeP">X</button>
     <h2 id="pTitle">&#9673; WORKBENCH</h2>
+    <div id="pTabs"></div>
     <div class="res" id="pRes"></div>
     <div id="pRows"></div>
   </div>
@@ -203,17 +231,25 @@
 /* ============================================================
    STONESLINGER — pixel side-scroller base-defense
    ============================================================ */
-const IW=384, IH=216, GROUND=178, WORLD=1920, BASE_X=960;
+const IW=560, IH=270, GROUND=232, WORLD=1920, BASE_X=960;
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 ctx.imageSmoothingEnabled=false;
+/* Touch phones get the on-screen pad; anything with a real pointer is driven
+   from the keyboard and gets the screen back. */
+const TOUCH=matchMedia('(pointer: coarse)').matches;
+document.body.classList.toggle('desktop', !TOUCH);
 
+/* Step by whole DEVICE pixels, not whole CSS pixels. On a HiDPI screen that
+   lands on a true integer scale; on a 1x screen it falls back to half steps,
+   which fill the window far better than rounding 2.9x down to 2x would. */
 function resize(){
-  const aw=innerWidth, ah=innerHeight;
+  const dpr=Math.max(1,Math.round(devicePixelRatio||1)), step=dpr>1?dpr:2;
+  const aw=innerWidth-(TOUCH?0:20), ah=innerHeight-(TOUCH?0:20);
   let s=Math.min(aw/IW, ah/IH);
-  if(s>1) s=Math.max(1, Math.floor(s*2)/2); // half-integer steps stay crisp
+  if(s>1) s=Math.max(1, Math.floor(s*step)/step);
   cv.style.width=(IW*s)+'px'; cv.style.height=(IH*s)+'px';
   document.getElementById('rot').textContent =
-    (ah>aw*1.2) ? 'TIP: LANDSCAPE IS COMFIER' : '';
+    (TOUCH && ah>aw*1.2) ? 'TIP: LANDSCAPE IS COMFIER' : '';
 }
 addEventListener('resize', resize); resize();
 
@@ -254,6 +290,7 @@ const SFX={
   wave:  ()=>beep(110,220,0.45,'square',0.09),
   denied:()=>beep(150,110,0.1,'square',0.05),
   wreck: ()=>beep(180,45,0.35,'sawtooth',0.1),
+  tick:  ()=>beep(520,520,0.03,'square',0.04),
   fall:  ()=>beep(300,40,0.9,'sawtooth',0.12),
 };
 document.getElementById('mute').addEventListener('pointerdown',e=>{
@@ -329,13 +366,46 @@ const BDEF={
     name:'BARRICADE', short:'WALL', hp:90, cost:{wood:20},
     desc:'LASHED STAKES. GROUND FOES STOP TO CHEW THROUGH IT INSTEAD OF WALKING PAST. BATS FLY OVER.',
   },
+  grove:{
+    name:'GROVE', short:'GROVE', hp:70, cost:{wood:24}, need:'seeds',
+    grow:24, yield:5, regrow:20,
+    desc:'PLANTED SAPLINGS. FOES STEP OVER THEM WHILE THEY ARE SMALL, BUT A GROWN GROVE STANDS IN THE LANE LIKE ANY WALL - A SOFTER ONE THAT KEEPS PAYING WOOD.',
+  },
   turret:{
     name:'SLINGER TURRET', short:'TURRET', hp:60, cost:{wood:30,stone:35,crystal:3},
     dmg:3, rate:0.9, range:92, spd:190, grav:110, life:1.2,
     desc:'FLINGS ROCKS ON ITS OWN. SHORT REACH, STEADY AIM. THIS IS WHAT LETS YOU LEAVE THE FIRE.',
   },
 };
-const BORDER=['wall','turret'];
+const BORDER=['wall','turret','grove'];
+
+/* ---------- camp tech ---------- */
+/* Each line is costed in the materials it does NOT help you collect, so no one
+   gathering loop can be specialised into while the other two go ignored. */
+const HARV=[0.40,0.31,0.24,0.18];   /* seconds per swing, by SHARP TOOLS level */
+const TDEF={
+  tools:{
+    name:'SHARP TOOLS', max:3,
+    cost:lv=>({stone:16+lv*14, crystal:lv}),
+    desc:'KNAP BETTER EDGES. EVERY SWING LANDS QUICKER, SO YOU SPEND LESS TIME STOOD STILL WITH YOUR BACK TO THE LANE.',
+    stat:lv=>HARV[lv].toFixed(2)+'S PER SWING'+(lv<3?' \u2192 '+HARV[lv+1].toFixed(2)+'S':''),
+  },
+  yield:{
+    name:'DEEP CUTS', max:2,
+    cost:lv=>({crystal:5+lv*5, stone:24+lv*24}),
+    desc:'TAKE THE WHOLE SEAM, NOT THE SURFACE. THE SAME NODE HANDS OVER MORE BEFORE IT RUNS DRY.',
+    stat:lv=>'+'+lv+' PER SWING'+(lv<2?' \u2192 +'+(lv+1):''),
+  },
+  seeds:{
+    name:'SEED POUCH', max:1,
+    cost:()=>({crystal:6, stone:30}),
+    desc:'SAVE THE CONES. LETS YOU PLANT A GROVE ON ANY BUILD PAD - WOOD WHERE YOU WANT IT INSTEAD OF WHERE IT HAPPENED TO GROW.',
+    stat:lv=>lv?'GROVES UNLOCKED':'NO SEEDS SAVED YET',
+  },
+};
+const TORDER=['tools','yield','seeds'];
+const harvTime=()=>HARV[G.tech.tools];
+const harvYield=()=>1+G.tech.yield;
 
 /* ---------- difficulty ---------- */
 const DIFFS={
@@ -370,6 +440,7 @@ function initGame(){
     carried:{wood:0, stone:0, crystal:0},
     cap:10, capLv:0,
     levels:{rock:1, sling:0, caster:0, auto:0},
+    tech:{tools:0, yield:0, seeds:0},
     cur:'rock',
     base:{hp:100, maxhp:100},
     pads: PADS.map(off=>({x:BASE_X+off, b:null, rub:null})),
@@ -517,7 +588,9 @@ function padNear(x){
 function blockerFor(fromX,toX){
   let best=null, bd=1e9;
   for(const pd of G.pads){
-    if(!pd.b) continue;
+    /* saplings are ankle-high; nothing stops to fight one, which is what keeps
+       planting from being a trap during the two dozen seconds it takes to grow */
+    if(!pd.b || (pd.b.type==='grove' && pd.b.grow<1)) continue;
     const a=pd.x-fromX, b=toX-fromX;
     if(a===0 || (a<0)!==(b<0) || Math.abs(a)>Math.abs(b)) continue;
     if(Math.abs(a)<bd){ bd=Math.abs(a); best=pd; }
@@ -527,14 +600,23 @@ function blockerFor(fromX,toX){
 function hurtBuild(pd,dmg){
   const b=pd.b;
   b.hp-=dmg; b.flash=0.12;
-  burstParts(pd.x, GROUND-9, b.type==='wall'?'#8a5a30':'#b0a494', 4, 40);
+  const col=b.type==='wall'?'#8a5a30':b.type==='grove'?'#5a9e3c':'#b0a494';
+  burstParts(pd.x, GROUND-9, col, 4, 40);
   if(b.hp<=0){
-    burstParts(pd.x, GROUND-11, '#8a5a30', 14, 70);
+    burstParts(pd.x, GROUND-11, col, 14, 70);
     floater(pd.x, GROUND-34, BDEF[b.type].short+' DOWN!', '#ff5a3c');
     /* The wreck stays on the pad. It does nothing, but rebuilding on top of your
        own foundations is half price, so a lost building is a setback not a reset. */
     pd.b=null; pd.rub=b.type; shake=3.5; SFX.wreck();
   }
+}
+/* Groves carry the same amount/max/t triple a wild node does, so the harvest
+   code treats one as just another tree. grow ticks 0 -> 1 before it bears. */
+function mkBuild(type,x){
+  const d=BDEF[type];
+  const b={type, hp:d.hp, maxhp:d.hp, cool:0, flash:0, kick:0};
+  if(type==='grove') Object.assign(b,{x, grow:0, amount:0, max:d.yield, t:0});
+  return b;
 }
 function repairCost(pd){
   const b=pd.b, need=1-b.hp/b.maxhp, c={};
@@ -652,6 +734,8 @@ const panelEl=document.getElementById('panel');
 let panelOpen=false;
 /* null = the workbench at the fire, otherwise the build pad we walked up to */
 let curPad=null;
+/* which workbench tab is showing; sticky between visits */
+let curTab='weapons';
 function openPanel(pad){
   curPad=pad||null; panelOpen=true;
   panelEl.classList.remove('hidden'); renderPanel();
@@ -686,6 +770,20 @@ function renderPanel(){
     wireBuys();
     return;
   }
+  const TABS=[['weapons','WEAPONS'],['camp','CAMP']];
+  document.getElementById('pTabs').innerHTML = TABS.map(([k,l])=>
+    '<button class="tab'+(curTab===k?' on':'')+'" data-tab="'+k+'">'+l+'</button>').join('');
+  if(curTab==='camp') campRows(row);
+  else weaponRows(row);
+  document.getElementById('pRows').innerHTML=h;
+  wireBuys();
+  document.querySelectorAll('#pTabs .tab').forEach(b=>{
+    b.addEventListener('pointerdown',ev=>{
+      ev.stopPropagation(); curTab=b.dataset.tab; SFX.tick(); renderPanel();
+    });
+  });
+}
+function weaponRows(row){
   for(const id of WORDER){
     const d=WDEF[id], lv=G.levels[id];
     if(lv===0){
@@ -702,13 +800,22 @@ function renderPanel(){
       }
     }
   }
+}
+function campRows(row){
   const rc={stone:12};
-  row('REPAIR CAMP', 'PATCH THE WALLS. +25 CAMP HP.', rc, 'repair',
+  row('REPAIR CAMP', 'PATCH THE WALLS. +25 CAMP HP. NOW: '+
+      Math.ceil(G.base.hp)+'/'+G.base.maxhp, rc, 'repair',
       canAfford(rc)&&G.base.hp<G.base.maxhp, 'REPAIR');
   const bc={wood:Math.ceil(20*Math.pow(1.6,G.capLv))};
-  row('BIGGER BAG', 'CARRY +5 MORE LOOT. NOW: '+G.cap, bc, 'bag', canAfford(bc), 'SEW');
-  document.getElementById('pRows').innerHTML=h;
-  wireBuys();
+  row('BIGGER BAG', 'CARRY +5 MORE LOOT PER TRIP. NOW: '+G.cap, bc, 'bag', canAfford(bc), 'SEW');
+  for(const id of TORDER){
+    const d=TDEF[id], lv=G.tech[id];
+    const nm=d.name+(d.max>1?' <span class="lv">LV '+lv+'</span>':'');
+    if(lv>=d.max){ row(nm, d.desc+'<br>'+d.stat(lv), null, 'x', false, d.max>1?'MAX':'OWNED'); continue; }
+    const c=d.cost(lv);
+    row(nm, d.desc+'<br>'+d.stat(lv), c, 'tech:'+id, canAfford(c),
+        d.max>1?'RESEARCH':'LEARN');
+  }
 }
 function wireBuys(){
   document.querySelectorAll('#pRows .buy').forEach(b=>{
@@ -730,6 +837,7 @@ function padRows(row){
   if(!b){
     for(const t of BORDER){
       const d=BDEF[t];
+      if(d.need && !G.tech[d.need]) continue;
       const st=d.desc+'<br>'+d.hp+' HP'+
         (t==='turret'?' / DMG '+d.dmg+' / '+d.rate+' PER SEC / RANGE '+d.range:'');
       row(d.name, st, d.cost, 'build:'+t, canAfford(d.cost), 'BUILD');
@@ -758,6 +866,11 @@ function doBuy(act){
     if(!canAfford(c)||G.levels[id]>=MAXLV) return SFX.denied();
     pay(c); G.levels[id]++;
     SFX.craft(); floater(BASE_X,GROUND-40,WDEF[id].name+' LV'+G.levels[id],'#ffb347');
+  }else if(kind==='tech'){
+    const d=TDEF[id], lv=G.tech[id], c=d.cost(lv);
+    if(lv>=d.max||!canAfford(c)) return SFX.denied();
+    pay(c); G.tech[id]++;
+    SFX.craft(); floater(BASE_X,GROUND-40,d.name+(d.max>1?' LV'+G.tech[id]:'!'),'#ffb347');
   }else if(kind==='repair'){
     if(!canAfford({stone:12})||G.base.hp>=G.base.maxhp) return SFX.denied();
     pay({stone:12}); G.base.hp=Math.min(G.base.maxhp,G.base.hp+25);
@@ -767,7 +880,7 @@ function doBuy(act){
     const t=curPad.rub, c=rebuildCost(t);
     if(!canAfford(c)) return SFX.denied();
     pay(c);
-    curPad.b={type:t, hp:BDEF[t].hp, maxhp:BDEF[t].hp, cool:0, flash:0, kick:0};
+    curPad.b=mkBuild(t,curPad.x);
     curPad.rub=null;
     SFX.craft(); floater(curPad.x,GROUND-36,BDEF[t].name+' REBUILT','#ffb347');
   }else if(kind==='clear'){
@@ -778,8 +891,9 @@ function doBuy(act){
     const c=BDEF[id].cost;
     if(!curPad || curPad.b || curPad.rub || !canAfford(c)) return SFX.denied();
     pay(c);
-    curPad.b={type:id, hp:BDEF[id].hp, maxhp:BDEF[id].hp, cool:0, flash:0, kick:0};
-    SFX.craft(); floater(curPad.x,GROUND-36,BDEF[id].name+'!','#ffb347');
+    curPad.b=mkBuild(id,curPad.x);
+    SFX.craft(); floater(curPad.x,GROUND-36,
+      id==='grove'?'PLANTED':BDEF[id].name+'!', id==='grove'?'#5a9e3c':'#ffb347');
   }else if(kind==='fix'){
     if(!curPad || !curPad.b || curPad.b.hp>=curPad.b.maxhp) return SFX.denied();
     const c=repairCost(curPad);
@@ -807,10 +921,12 @@ function doBuy(act){
 const TIPS=[
   {at:1, txt:'HOLD ● TO THROW ROCKS'},
   {at:8, txt:'✦ NEAR TREES + ROCKS TO GATHER'},
+  {at:12,txt:'THE CAMP TAB SHARPENS YOUR TOOLS'},
   {at:16,txt:'CARRY LOOT HOME TO STORE IT'},
   {at:23,txt:'✦ AT THE FIRE TO OPEN WORKBENCH'},
   {at:34,txt:'✦ ON A BUILD PAD TO RAISE DEFENSES'},
   {at:46,txt:'TURRETS FIGHT WHILE YOU GATHER'},
+  {at:60,txt:'SEEDS PUT A GROVE WHERE YOU WANT IT'},
 ];
 function update(dt){
   G.t+=dt;
@@ -846,21 +962,27 @@ function update(dt){
     let node=null;
     for(const n of G.nodes)
       if(n.amount>0 && Math.abs(n.x-p.x)<15){ node=n; break; }
+    /* a mature grove is harvested exactly like a wild node - it carries the
+       same amount/max/t fields so this loop needs no special case below */
+    if(!node) for(const pd of G.pads)
+      if(pd.b && pd.b.type==='grove' && pd.b.amount>0 && Math.abs(pd.x-p.x)<15){ node=pd.b; break; }
     const pad = (!nearBase && !node) ? padNear(p.x) : null;
     ctxLabel(node?'GATHER':(nearBase?'BUILD':(pad?(pad.b?'REPAIR':(pad.rub?'REBUILD':'BUILD')):'')));
     if(node && input.action){
       p.harvT+=dt;
-      if(p.harvT>=0.4){
+      if(p.harvT>=harvTime()){
         p.harvT=0; node.amount--;
-        if(node.amount<=0) node.t=45;
-        const res=node.type==='tree'?'wood':node.type==='rock'?'stone':'crystal';
-        if(carriedTotal()<G.cap){
-          G.carried[res]++;
-          floater(p.x,GROUND-26,'+1 '+res.toUpperCase(),
+        if(node.amount<=0) node.t=node.type==='grove'?BDEF.grove.regrow:45;
+        const res=node.type==='rock'?'stone':node.type==='crystal'?'crystal':'wood';
+        const room=G.cap-carriedTotal();
+        if(room>0){
+          const got=Math.min(harvYield(),room);
+          G.carried[res]+=got;
+          floater(p.x,GROUND-26,'+'+got+' '+res.toUpperCase(),
             res==='wood'?'#c98a4b':res==='stone'?'#b0a494':'#5fe0d8');
         }else floater(p.x,GROUND-26,'BAG FULL!','#ff5a3c');
         SFX.gather();
-        burstParts(node.x,GROUND-8,node.type==='tree'?'#5a9e3c':node.type==='rock'?'#8a8175':'#5fe0d8',5,35);
+        burstParts(node.x,GROUND-8,res==='wood'?'#5a9e3c':res==='stone'?'#8a8175':'#5fe0d8',5,35);
       }
     }else if(!input.action) p.harvT=0;
     if(actionEdge && !node && (nearBase||pad)) openPanel(nearBase?null:pad);
@@ -924,6 +1046,14 @@ function update(dt){
     const b=pd.b; if(!b) continue;
     b.flash=Math.max(0,b.flash-dt);
     b.kick=Math.max(0,b.kick-dt);
+    if(b.type==='grove'){
+      const d=BDEF.grove;
+      if(b.grow<1){
+        b.grow=Math.min(1,b.grow+dt/d.grow);
+        if(b.grow>=1){ b.amount=b.max; floater(pd.x,GROUND-40,'GROVE MATURED','#5a9e3c'); }
+      }else if(b.amount<=0){ b.t-=dt; if(b.t<=0) b.amount=b.max; }
+      continue;
+    }
     if(b.type!=='turret') continue;
     b.cool-=dt;
     if(b.cool>0) continue;
@@ -1018,15 +1148,15 @@ function render(){
   const camY=F(shake? rnd(-shake,shake)*0.5:0);
   /* sky */
   const sky=['#161228','#1d1836','#2a2044','#3b2a4f'];
-  for(let i=0;i<4;i++){ ctx.fillStyle=sky[i]; ctx.fillRect(0,i*34,IW,34); }
-  ctx.fillStyle='#3b2a4f'; ctx.fillRect(0,136,IW,GROUND-136);
+  for(let i=0;i<4;i++){ ctx.fillStyle=sky[i]; ctx.fillRect(0,i*42,IW,42); }
+  ctx.fillStyle='#3b2a4f'; ctx.fillRect(0,168,IW,GROUND-168);
   /* stars + moon */
   ctx.fillStyle='#d8d4f0';
-  for(let i=0;i<26;i++){
-    const sx=(i*61+((i*i*13)%37)*7 - camX*0.08)%IW, sy=(i*37)%90+4;
+  for(let i=0;i<40;i++){
+    const sx=(i*61+((i*i*13)%37)*7 - camX*0.08)%IW, sy=(i*37)%116+4;
     ctx.fillRect((sx+IW)%IW, sy, 1,1);
   }
-  const mx=298,my=18;
+  const mx=436,my=20;
   ctx.fillStyle='#e8e4d8';
   ctx.fillRect(mx+2,my,8,12); ctx.fillRect(mx,my+2,12,8); ctx.fillRect(mx+1,my+1,10,10);
   ctx.fillStyle='#c9c2b0';
@@ -1035,9 +1165,9 @@ function render(){
   for(let x=0;x<IW;x++){
     const wx1=x+camX*0.35, wx2=x+camX*0.6;
     ctx.fillStyle='#2c2547';
-    ctx.fillRect(x, GROUND-hillY(wx1,16,0.012,44)+camY, 1, 200);
+    ctx.fillRect(x, GROUND-hillY(wx1,20,0.012,52)+camY, 1, 240);
     ctx.fillStyle='#372e54';
-    ctx.fillRect(x, GROUND-hillY(wx2,10,0.02,24)+camY, 1, 200);
+    ctx.fillRect(x, GROUND-hillY(wx2,13,0.02,28)+camY, 1, 240);
   }
   /* ground */
   ctx.fillStyle='#4a7a3c'; ctx.fillRect(0,GROUND+camY,IW,3);
@@ -1046,7 +1176,7 @@ function render(){
   for(let i=0;i<40;i++){
     const gx=(i*97+((i*i*29)%53)*5 - camX)%WORLD;
     const sx=gx-0;
-    if(sx>-2&&sx<IW) ctx.fillRect(F(sx),GROUND+6+(i*13)%28+camY,2,1);
+    if(sx>-2&&sx<IW) ctx.fillRect(F(sx),GROUND+6+(i*13)%38+camY,2,1);
   }
 
   ctx.save(); ctx.translate(-camX,camY);
@@ -1088,7 +1218,10 @@ function render(){
       if(near){ ctx.fillStyle='#ffb347'; ctx.fillRect(pd.x-8,GROUND-6,16,1); }
       continue;
     }
-    const spr=b.type==='wall'?BARRIER:TURRET;
+    const spr = b.type==='wall' ? BARRIER
+              : b.type==='turret' ? TURRET
+              : b.grow<1 ? SAPLING
+              : b.amount>0 ? TREE : TREEBARE;
     const by=GROUND-spr.h+(b.kick>0?1:0), bx=pd.x-Math.floor(spr.w/2);
     if(b.flash>0){
       ctx.fillStyle='#fff';
@@ -1098,6 +1231,13 @@ function render(){
       ctx.fillStyle='#0c0a14'; ctx.fillRect(F(pd.x)-6,F(by)-5,12,3);
       ctx.fillStyle=b.hp/b.maxhp<0.35?'#ff5a3c':'#5a9e3c';
       ctx.fillRect(F(pd.x)-5,F(by)-4,Math.max(1,Math.round(10*b.hp/b.maxhp)),1);
+    }
+    /* a grove shows what it is up to: filling while it grows, draining as you pick it */
+    if(b.type==='grove' && Math.abs(pd.x-G.player.x)<15){
+      const frac=b.grow<1?b.grow:b.amount/b.max;
+      ctx.fillStyle='#0c0a14'; ctx.fillRect(F(pd.x)-6,F(by)-9,12,3);
+      ctx.fillStyle=b.grow<1?'#5fe0d8':'#ffb347';
+      ctx.fillRect(F(pd.x)-5,F(by)-8,Math.max(1,Math.round(10*frac)),1);
     }
   }
 
@@ -1343,7 +1483,7 @@ const BAT=mkSpr([
 '..bbebbeb..',
 '...bbbbb...',
 '....b.b....'],{b:'#7a5296',B:'#4f3266',e:'#ffd23c'});
-const TREE=mkSpr([
+const TREEROWS=[
 '....LLLLLL....',
 '..LLLLllLLLL..',
 '.LLllLLLLLlLL.',
@@ -1356,7 +1496,18 @@ const TREE=mkSpr([
 '......kK......',
 '......kK......',
 '......kK......',
-'.....KkKK.....'],{L:'#3f7529',l:'#5a9e3c',k:'#5a3d22',K:'#43301c'});
+'.....KkKK.....'];
+const TREE=mkSpr(TREEROWS,{L:'#3f7529',l:'#5a9e3c',k:'#5a3d22',K:'#43301c'});
+/* A grove that has just been picked over: same tree, thinned-out canopy. */
+const TREEBARE=mkSpr(TREEROWS,{L:'#2f4a24',k:'#5a3d22',K:'#43301c'});
+const SAPLING=mkSpr([
+'..ll..',
+'.lLLl.',
+'llLLll',
+'.lLLl.',
+'..kK..',
+'..kK..',
+'.KkKK.'],{L:'#3f7529',l:'#5a9e3c',k:'#5a3d22',K:'#43301c'});
 const STUMP=mkSpr([
 '.kkkK.',
 '.kKkK.',
@@ -1424,7 +1575,12 @@ const TURRET=mkSpr([
 '.pp.....pp.',
 'pp.......pp'],{y:'#c9b891',b:'#ff5a3c',t:'#57503f',T:'#8a8175',s:'#b0a494',p:'#6b431f',P:'#8a5a30'});
 /* Enough of the turret to leave a snapped-off mast standing, not just a mound. */
-const WRECK={wall:stumpOf(BARRIER,5), turret:stumpOf(TURRET,9)};
+const GSTUMP=mkSpr([
+'..kKk..',
+'.kKkKk.',
+'kKkkKKk',
+'KkKKkKK'],{k:'#4a3020',K:'#33240f'});
+const WRECK={wall:stumpOf(BARRIER,5), turret:stumpOf(TURRET,9), grove:GSTUMP};
 const ICONS={
   wood:  mkSpr(['kkkkk','kKkKk','kkkkk'],{k:'#c98a4b',K:'#8a5a30'}),
   stone: mkSpr(['.sss.','sssss','.sss.'],{s:'#b0a494'}),
