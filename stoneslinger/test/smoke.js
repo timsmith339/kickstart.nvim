@@ -221,6 +221,50 @@ function shownInPage(sel) {
   eq('and refunds half', await page.evaluate('G.stored.wood'), beforeScrap + 10);
   await page.evaluate('closePanel()');
 
+  section('wreckage and rebuilding');
+  await page.evaluate('G.stored = {wood:999, stone:999, crystal:999};' +
+                      'openPanel(G.pads[2]); doBuy("build:turret"); closePanel();');
+  eq('a turret to knock down', await page.evaluate('G.pads[2].b.type'), 'turret');
+  await page.evaluate('hurtBuild(G.pads[2], 999)');
+  eq('destroying it clears the building', await page.evaluate('G.pads[2].b'), null);
+  eq('but leaves its wreck behind', await page.evaluate('G.pads[2].rub'), 'turret');
+  eq('wreckage does not block enemies',
+     await page.evaluate('blockerFor(G.pads[2].x - 60, BASE_X)'), null);
+
+  await page.evaluate('openPanel(G.pads[2])');
+  check('the pad offers a rebuild',
+        await page.evaluate('!!document.querySelector(\'#pRows .buy[data-act="rebuild"]\')'));
+  check('and no plain build while the wreck stands',
+        await page.evaluate('!document.querySelector(\'#pRows .buy[data-act^="build:"]\')'));
+  eq('rebuilding costs half', await page.evaluate('rebuildCost("turret")'),
+     { wood: 15, stone: 18, crystal: 2 });
+  const beforeRe = await page.evaluate('G.stored.stone');
+  await page.evaluate('document.querySelector(\'#pRows .buy[data-act="rebuild"]\').' +
+                      'dispatchEvent(new PointerEvent("pointerdown", {bubbles:true}))');
+  eq('rebuild puts it back at full HP', await page.evaluate('G.pads[2].b.hp'),
+     await page.evaluate('BDEF.turret.hp'));
+  eq('and clears the wreck', await page.evaluate('G.pads[2].rub'), null);
+  eq('at half price', await page.evaluate('G.stored.stone'), beforeRe - 18);
+
+  await page.evaluate('hurtBuild(G.pads[2], 999); openPanel(G.pads[2]); doBuy("clear")');
+  eq('clearing hauls the wreck off', await page.evaluate('G.pads[2].rub'), null);
+  await page.evaluate('renderPanel()');
+  check('which frees the pad for anything',
+        await page.evaluate('!!document.querySelector(\'#pRows .buy[data-act="build:wall"]\')'));
+  await page.evaluate('closePanel()');
+
+  section('enemy scaling');
+  /* spawnEnemy picks a type at random; pin Math.random so every sample is a grub
+     and the numbers below compare like with like. */
+  const hpAt = w => page.evaluate(
+    'curDiff="medium"; G.wave=' + w + '; G.enemies.length=0;' +
+    'const _r=Math.random; Math.random=()=>0.9; spawnEnemy(); Math.random=_r;' +
+    'G.enemies[0].maxhp');
+  const w1 = await hpAt(1), w11 = await hpAt(11);
+  check('wave 11 enemies are tougher than wave 1', w11 > w1, { w1, w11 });
+  check('but at most double after ten waves', w11 <= w1 * 2.05, { w1, w11 });
+  await page.evaluate('G.enemies.length = 0');
+
   section('game over and retry');
   await page.evaluate('G.base.hp = 0');
   await step(2);
@@ -232,6 +276,7 @@ function shownInPage(sel) {
   eq('and resets the tech tree', await page.evaluate('G.levels'),
      { rock: 1, sling: 0, caster: 0, auto: 0 });
   eq('and clears every pad', await page.evaluate('G.pads.filter(p => p.b).length'), 0);
+  eq('and every wreck', await page.evaluate('G.pads.filter(p => p.rub).length'), 0);
   eq('rail resets too', await rail(), [
     'ROCKLV1|wbtn sel', 'SLING---|wbtn lock', 'CAST---|wbtn lock', 'AUTO---|wbtn lock']);
 

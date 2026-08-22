@@ -268,6 +268,20 @@ function mkSpr(rows,pal){
     if(c!=='.'&&pal[c]) px.push([x,y,pal[c]]); }});
   return {w:rows[0].length,h:rows.length,px};
 }
+function dimHex(c){
+  const n=parseInt(c.slice(1),16), f=v=>Math.round(v*0.62).toString(16).padStart(2,'0');
+  return '#'+f((n>>16)&255)+f((n>>8)&255)+f(n&255);
+}
+/* What's left standing once a building goes down: the bottom rows of its own
+   sprite, darkened, with the top course knocked out so the edge reads broken. */
+function stumpOf(s,rows){
+  const y0=s.h-rows, px=[];
+  for(const q of s.px){
+    if(q[1]<y0 || (q[1]===y0 && q[0]%3===1)) continue;
+    px.push([q[0], q[1]-y0, dimHex(q[2])]);
+  }
+  return {w:s.w,h:rows,px};
+}
 function drawSpr(s,x,y,flip){
   x=F(x); y=F(y);
   for(let i=0;i<s.px.length;i++){ const p=s.px[i];
@@ -358,7 +372,7 @@ function initGame(){
     levels:{rock:1, sling:0, caster:0, auto:0},
     cur:'rock',
     base:{hp:100, maxhp:100},
-    pads: PADS.map(off=>({x:BASE_X+off, b:null})),
+    pads: PADS.map(off=>({x:BASE_X+off, b:null, rub:null})),
     nodes:[], enemies:[], projs:[], parts:[], pickups:[], floaters:[],
     wave:0, waveT:5, trickleT:9*DIFFS[curDiff].spawnIv, burst:0, burstT:0,
     banner:null, over:false,
@@ -517,13 +531,23 @@ function hurtBuild(pd,dmg){
   if(b.hp<=0){
     burstParts(pd.x, GROUND-11, '#8a5a30', 14, 70);
     floater(pd.x, GROUND-34, BDEF[b.type].short+' DOWN!', '#ff5a3c');
-    pd.b=null; shake=3.5; SFX.wreck();
+    /* The wreck stays on the pad. It does nothing, but rebuilding on top of your
+       own foundations is half price, so a lost building is a setback not a reset. */
+    pd.b=null; pd.rub=b.type; shake=3.5; SFX.wreck();
   }
 }
 function repairCost(pd){
   const b=pd.b, need=1-b.hp/b.maxhp, c={};
   for(const k in BDEF[b.type].cost){
     const v=Math.ceil(BDEF[b.type].cost[k]*need*0.6);
+    if(v>0) c[k]=v;
+  }
+  return c;
+}
+function rebuildCost(type){
+  const c={};
+  for(const k in BDEF[type].cost){
+    const v=Math.ceil(BDEF[type].cost[k]*0.5);
     if(v>0) c[k]=v;
   }
   return c;
@@ -580,7 +604,7 @@ function spawnEnemy(){
   if(x>camL && x<camR) x = side>0 ? Math.max(x,camR) : Math.min(x,camL);
   x=clamp(x,10,WORLD-10);
   const dd=D();
-  const hpMul=(1+0.22*(w-1)*dd.ramp)*dd.hp,
+  const hpMul=(1+0.10*(w-1)*dd.ramp)*dd.hp,
         dmgMul=(1+0.08*(w-1)*dd.ramp)*dd.dmg,
         spdMul=1+0.02*w;
   const ST={
@@ -694,6 +718,15 @@ function wireBuys(){
 function padRows(row){
   const b=curPad.b;
   const where=Math.abs(curPad.x-BASE_X)+'M '+(curPad.x<BASE_X?'WEST':'EAST')+' OF THE FIRE';
+  if(!b && curPad.rub){
+    const d=BDEF[curPad.rub], rc=rebuildCost(curPad.rub);
+    row('WRECKED '+d.name, where+'.<br>THE FOUNDATIONS HELD. RAISING IT AGAIN COSTS HALF.',
+        null, 'x', false, '&mdash;');
+    row('REBUILD', 'BACK UP AT FULL '+d.hp+' HP.', rc, 'rebuild', canAfford(rc), 'REBUILD');
+    row('CLEAR RUBBLE', 'HAUL THE WRECK OFF SO YOU CAN BUILD SOMETHING ELSE HERE.',
+        null, 'clear', true, 'CLEAR');
+    return;
+  }
   if(!b){
     for(const t of BORDER){
       const d=BDEF[t];
@@ -729,9 +762,21 @@ function doBuy(act){
     if(!canAfford({stone:12})||G.base.hp>=G.base.maxhp) return SFX.denied();
     pay({stone:12}); G.base.hp=Math.min(G.base.maxhp,G.base.hp+25);
     SFX.craft(); floater(BASE_X,GROUND-40,'+25 CAMP','#5a9e3c');
+  }else if(kind==='rebuild'){
+    if(!curPad || curPad.b || !curPad.rub) return SFX.denied();
+    const t=curPad.rub, c=rebuildCost(t);
+    if(!canAfford(c)) return SFX.denied();
+    pay(c);
+    curPad.b={type:t, hp:BDEF[t].hp, maxhp:BDEF[t].hp, cool:0, flash:0, kick:0};
+    curPad.rub=null;
+    SFX.craft(); floater(curPad.x,GROUND-36,BDEF[t].name+' REBUILT','#ffb347');
+  }else if(kind==='clear'){
+    if(!curPad || !curPad.rub) return SFX.denied();
+    curPad.rub=null;
+    SFX.gather(); burstParts(curPad.x,GROUND-6,'#4a3826',8,45);
   }else if(kind==='build'){
     const c=BDEF[id].cost;
-    if(!curPad || curPad.b || !canAfford(c)) return SFX.denied();
+    if(!curPad || curPad.b || curPad.rub || !canAfford(c)) return SFX.denied();
     pay(c);
     curPad.b={type:id, hp:BDEF[id].hp, maxhp:BDEF[id].hp, cool:0, flash:0, kick:0};
     SFX.craft(); floater(curPad.x,GROUND-36,BDEF[id].name+'!','#ffb347');
@@ -802,7 +847,7 @@ function update(dt){
     for(const n of G.nodes)
       if(n.amount>0 && Math.abs(n.x-p.x)<15){ node=n; break; }
     const pad = (!nearBase && !node) ? padNear(p.x) : null;
-    ctxLabel(node?'GATHER':(nearBase?'BUILD':(pad?(pad.b?'REPAIR':'BUILD'):'')));
+    ctxLabel(node?'GATHER':(nearBase?'BUILD':(pad?(pad.b?'REPAIR':(pad.rub?'REBUILD':'BUILD')):'')));
     if(node && input.action){
       p.harvT+=dt;
       if(p.harvT>=0.4){
@@ -1031,6 +1076,12 @@ function render(){
     const b=pd.b;
     if(!b){
       const near=Math.abs(pd.x-G.player.x)<14;
+      if(pd.rub){
+        const rs=WRECK[pd.rub];
+        drawSpr(rs, pd.x-Math.floor(rs.w/2), GROUND-rs.h, pd.x<BASE_X);
+        if(near){ ctx.fillStyle='#ffb347'; ctx.fillRect(pd.x-8,GROUND-rs.h-2,16,1); }
+        continue;
+      }
       ctx.fillStyle=near?'#8a7a5f':'#4a3826';
       for(let i=-6;i<=6;i+=3) ctx.fillRect(pd.x+i,GROUND-1,2,1);
       ctx.fillRect(pd.x-8,GROUND-5,1,4); ctx.fillRect(pd.x+7,GROUND-5,1,4);
@@ -1372,6 +1423,8 @@ const TURRET=mkSpr([
 '..pp...pp..',
 '.pp.....pp.',
 'pp.......pp'],{y:'#c9b891',b:'#ff5a3c',t:'#57503f',T:'#8a8175',s:'#b0a494',p:'#6b431f',P:'#8a5a30'});
+/* Enough of the turret to leave a snapped-off mast standing, not just a mound. */
+const WRECK={wall:stumpOf(BARRIER,5), turret:stumpOf(TURRET,9)};
 const ICONS={
   wood:  mkSpr(['kkkkk','kKkKk','kkkkk'],{k:'#c98a4b',K:'#8a5a30'}),
   stone: mkSpr(['.sss.','sssss','.sss.'],{s:'#b0a494'}),

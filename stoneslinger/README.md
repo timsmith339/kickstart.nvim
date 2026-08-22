@@ -41,6 +41,10 @@ Both block ground enemies, so a barricade out at 270m and a turret behind it at
 70m is worth more than two turrets side by side. Anything built can be repaired
 (cost scales with the damage) or salvaged for half its materials back.
 
+Knock one down and the wreck stays on the pad. It does nothing — it won't stop
+anyone — but the foundations count: **rebuilding costs half**. Clear the rubble
+(free) if you'd rather put something different there.
+
 The point isn't surviving longer at the fire — it's that a turret holding a
 flank is what lets you walk out to the crystal fields at the edges of the map
 and still have a camp when you get home.
@@ -49,6 +53,9 @@ and still have a camp when you get home.
 
 Pick a mode on the title screen (remembered between sessions, with a separate
 best score for each):
+
+Enemies also scale with the wave: +10% HP and +8% damage per wave past the
+first, multiplied by the mode's ramp.
 
 | Mode | Enemy HP & damage | Spawn rate & wave ramp | Loot drops |
 | --- | --- | --- | --- |
@@ -99,7 +106,7 @@ than sleeping, so it's fast and doesn't flake.
 
 ```sh
 cd stoneslinger
-node test/smoke.js            # 49 checks, exits non-zero on failure
+node test/smoke.js            # 64 checks, exits non-zero on failure
 node test/smoke.js --headed   # watch it run
 ```
 
