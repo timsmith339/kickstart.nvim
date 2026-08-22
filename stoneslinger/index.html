@@ -148,7 +148,7 @@
   DEFEND THE FIRE FROM BOTH SIDES.</div>
   <div class="sub" style="color:#8a7a5f">
     &#9664;&#9654; MOVE &nbsp; &#9679; THROW &nbsp; &#10022; GATHER / BUILD<br>
-    (KEYS: A/D MOVE, J THROW, K USE, Q SWAP)
+    (KEYS: A/D MOVE, J THROW, F GATHER/BUILD, Q SWAP)
   </div>
   <div class="diffrow">
     <button class="dbtn" data-d="easy">EASY</button>
@@ -450,7 +450,7 @@ bindBtn('bL','left'); bindBtn('bR','right');
 bindBtn('bAtk','attack'); bindBtn('bAct','action');
 bindBtn('bSwap',null,()=>swapWeapon());
 const KEY={a:'left',arrowleft:'left',d:'right',arrowright:'right',
-           j:'attack',x:'attack',' ':'attack',k:'action',e:'action',arrowup:'action',z:'action'};
+           j:'attack',x:'attack',' ':'attack',f:'action',e:'action',arrowup:'action',z:'action'};
 addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
   if(KEY[k]!==undefined){ input[KEY[k]]=1; e.preventDefault(); }
