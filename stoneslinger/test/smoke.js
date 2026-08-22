@@ -40,7 +40,8 @@ function section(t) { console.log('\n' + t); }
 function stepInPage(frames) {
   const was = panelOpen; panelOpen = true;
   for (let i = 0; i < frames; i++) update(1 / 60);
-  panelOpen = was;
+  // update() itself can open the workbench; don't stomp that when restoring
+  panelOpen = document.getElementById('panel').classList.contains('hidden') ? was : true;
 }
 
 /* What the four rail buttons currently read, plus their classes. */
@@ -150,6 +151,76 @@ function shownInPage(sel) {
   check('the slingshot kills things', await page.evaluate('G.kills > 0'),
         await page.evaluate('({kills: G.kills, enemies: G.enemies.length})'));
 
+  section('base defenses');
+  eq('six build pads', await page.evaluate('G.pads.length'), 6);
+  eq('all empty to start', await page.evaluate('G.pads.filter(p => p.b).length'), 0);
+
+  // walk onto a pad and press the action button — same key as the workbench
+  await page.evaluate(() => {
+    closePanel();
+    G.stored = { wood: 999, stone: 999, crystal: 999 };
+    G.player.x = G.pads[3].x;
+    input.action = 1;
+  });
+  await step(2);
+  await page.evaluate('input.action = 0');
+  check('a pad opens the build panel', await shown('#panel'));
+  eq('titled as a build site', await page.evaluate('document.getElementById("pTitle").textContent.trim()'),
+     '▣ BUILD SITE');
+
+  const woodBefore = await page.evaluate('G.stored.wood');
+  await page.click('#pRows .buy[data-act="build:wall"]');   // the real button, not doBuy()
+  eq('barricade goes up on that pad', await page.evaluate('G.pads[3].b && G.pads[3].b.type'), 'wall');
+  eq('and it costs wood', await page.evaluate('G.stored.wood'), woodBefore - 20);
+  eq('the other pads are untouched', await page.evaluate('G.pads.filter(p => p.b).length'), 1);
+
+  // a grub outside the wall should stop at it, not stroll past to the fire
+  await page.evaluate(() => {
+    closePanel();
+    G.enemies = []; G.projs = []; G.waveT = 999; G.trickleT = 999; G.burst = 0;
+    G.base.hp = G.base.maxhp; G.player.x = BASE_X; input.attack = 0;
+    spawnEnemy();
+    const e = G.enemies[0];
+    e.type = 'grub'; e.x = 1100; e.y = GROUND; e.hp = e.maxhp = 999;
+  });
+  await step(300);
+  check('a wall stops ground foes', await page.evaluate('G.enemies[0].x > G.pads[3].x'),
+        await page.evaluate('({enemy: Math.round(G.enemies[0].x), wall: G.pads[3].x})'));
+  check('they chew on it instead', await page.evaluate('G.pads[3].b.hp < G.pads[3].b.maxhp'),
+        await page.evaluate('G.pads[3].b.hp'));
+  eq('so the fire takes nothing', await page.evaluate('G.base.hp'), await page.evaluate('G.base.maxhp'));
+
+  section('turrets');
+  await page.evaluate(() => {
+    openPanel(G.pads[2]);
+    doBuy('build:turret');
+    closePanel();
+    G.enemies = []; G.projs = []; G.kills = 0;
+    G.waveT = 999; G.trickleT = 999; G.burst = 0;
+    G.player.x = BASE_X; input.attack = 0; input.left = input.right = 0;
+    spawnEnemy();
+    const e = G.enemies[0];
+    e.type = 'grub'; e.x = G.pads[2].x - 40; e.y = GROUND;
+  });
+  eq('turret goes up', await page.evaluate('G.pads[2].b.type'), 'turret');
+  await step(600);
+  check('it kills on its own with the player idle', await page.evaluate('G.kills > 0'),
+        await page.evaluate('({kills: G.kills, left: G.enemies.length})'));
+
+  section('repair and salvage');
+  await page.evaluate('openPanel(G.pads[3]); G.pads[3].b.hp = G.pads[3].b.maxhp / 2;' +
+                      'G.stored = {wood:999, stone:999, crystal:999};');
+  const beforeFix = await page.evaluate('G.stored.wood');
+  await page.evaluate('doBuy("fix")');
+  eq('repair restores full HP', await page.evaluate('G.pads[3].b.hp'), await page.evaluate('G.pads[3].b.maxhp'));
+  check('and charges for it', await page.evaluate('G.stored.wood') < beforeFix);
+
+  const beforeScrap = await page.evaluate('G.stored.wood');
+  await page.evaluate('doBuy("scrap")');
+  eq('salvage clears the pad', await page.evaluate('G.pads[3].b'), null);
+  eq('and refunds half', await page.evaluate('G.stored.wood'), beforeScrap + 10);
+  await page.evaluate('closePanel()');
+
   section('game over and retry');
   await page.evaluate('G.base.hp = 0');
   await step(2);
@@ -160,6 +231,7 @@ function shownInPage(sel) {
   eq('retry starts a fresh run', await page.evaluate('state'), 'play');
   eq('and resets the tech tree', await page.evaluate('G.levels'),
      { rock: 1, sling: 0, caster: 0, auto: 0 });
+  eq('and clears every pad', await page.evaluate('G.pads.filter(p => p.b).length'), 0);
   eq('rail resets too', await rail(), [
     'ROCKLV1|wbtn sel', 'SLING---|wbtn lock', 'CAST---|wbtn lock', 'AUTO---|wbtn lock']);
 

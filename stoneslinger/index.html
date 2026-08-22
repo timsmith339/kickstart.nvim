@@ -166,7 +166,7 @@
   <div class="title-big">STONESLINGER</div>
   <div class="sub">THROW ROCKS. GATHER WOOD + STONE.<br>
   BUILD BETTER ROCK-THROWERS AT YOUR CAMP.<br>
-  DEFEND THE FIRE FROM BOTH SIDES.</div>
+  RAISE WALLS AND TURRETS SO YOU CAN LEAVE IT.</div>
   <div class="sub" style="color:#8a7a5f">
     &#9664;&#9654; MOVE &nbsp; &#9679; THROW &nbsp; &#10022; GATHER / BUILD<br>
     (KEYS: A/D MOVE, J THROW, F GATHER/BUILD, 1-4 OR Q WEAPON)
@@ -192,7 +192,7 @@
 <div id="panel" class="hidden">
   <div id="panelbox">
     <button id="closeP">X</button>
-    <h2>&#9673; WORKBENCH</h2>
+    <h2 id="pTitle">&#9673; WORKBENCH</h2>
     <div class="res" id="pRes"></div>
     <div id="pRows"></div>
   </div>
@@ -253,6 +253,7 @@ const SFX={
   edie:  ()=>beep(95,40,0.12,'square',0.07),
   wave:  ()=>beep(110,220,0.45,'square',0.09),
   denied:()=>beep(150,110,0.1,'square',0.05),
+  wreck: ()=>beep(180,45,0.35,'sawtooth',0.1),
   fall:  ()=>beep(300,40,0.9,'sawtooth',0.12),
 };
 document.getElementById('mute').addEventListener('pointerdown',e=>{
@@ -304,6 +305,24 @@ function upCost(id){
   return c;
 }
 
+/* ---------- base defenses ---------- */
+/* Fixed build pads, mirrored either side of the fire. Offsets are chosen to
+   clear every resource node by 30px so "gather" and "build" never fight over
+   the same patch of ground. */
+const PADS=[-270,-170,-70,70,170,270];
+const BDEF={
+  wall:{
+    name:'BARRICADE', short:'WALL', hp:90, cost:{wood:20},
+    desc:'LASHED STAKES. GROUND FOES STOP TO CHEW THROUGH IT INSTEAD OF WALKING PAST. BATS FLY OVER.',
+  },
+  turret:{
+    name:'SLINGER TURRET', short:'TURRET', hp:60, cost:{wood:30,stone:35,crystal:3},
+    dmg:3, rate:0.9, range:92, spd:190, grav:110, life:1.2,
+    desc:'FLINGS ROCKS ON ITS OWN. SHORT REACH, STEADY AIM. THIS IS WHAT LETS YOU LEAVE THE FIRE.',
+  },
+};
+const BORDER=['wall','turret'];
+
 /* ---------- difficulty ---------- */
 const DIFFS={
   easy:  {label:'EASY',   blurb:'GENTLER FOES, RICHER LOOT',
@@ -339,6 +358,7 @@ function initGame(){
     levels:{rock:1, sling:0, caster:0, auto:0},
     cur:'rock',
     base:{hp:100, maxhp:100},
+    pads: PADS.map(off=>({x:BASE_X+off, b:null})),
     nodes:[], enemies:[], projs:[], parts:[], pickups:[], floaters:[],
     wave:0, waveT:5, trickleT:9*DIFFS[curDiff].spawnIv, burst:0, burstT:0,
     banner:null, over:false,
@@ -472,22 +492,74 @@ function refreshWeaponSel(){
 }
 buildWeaponSel();
 
+/* ---------- defenses ---------- */
+function padNear(x){
+  for(const pd of G.pads) if(Math.abs(pd.x-x)<14) return pd;
+  return null;
+}
+/* First standing building between a walker and where it wants to go. Anything
+   built blocks: a turret is a structure on the lane, not scenery, which is why
+   a wall in front of a turret is worth doing. */
+function blockerFor(fromX,toX){
+  let best=null, bd=1e9;
+  for(const pd of G.pads){
+    if(!pd.b) continue;
+    const a=pd.x-fromX, b=toX-fromX;
+    if(a===0 || (a<0)!==(b<0) || Math.abs(a)>Math.abs(b)) continue;
+    if(Math.abs(a)<bd){ bd=Math.abs(a); best=pd; }
+  }
+  return best;
+}
+function hurtBuild(pd,dmg){
+  const b=pd.b;
+  b.hp-=dmg; b.flash=0.12;
+  burstParts(pd.x, GROUND-9, b.type==='wall'?'#8a5a30':'#b0a494', 4, 40);
+  if(b.hp<=0){
+    burstParts(pd.x, GROUND-11, '#8a5a30', 14, 70);
+    floater(pd.x, GROUND-34, BDEF[b.type].short+' DOWN!', '#ff5a3c');
+    pd.b=null; shake=3.5; SFX.wreck();
+  }
+}
+function repairCost(pd){
+  const b=pd.b, need=1-b.hp/b.maxhp, c={};
+  for(const k in BDEF[b.type].cost){
+    const v=Math.ceil(BDEF[b.type].cost[k]*need*0.6);
+    if(v>0) c[k]=v;
+  }
+  return c;
+}
+function salvageValue(type){
+  const c={};
+  for(const k in BDEF[type].cost){
+    const v=Math.floor(BDEF[type].cost[k]*0.5);
+    if(v>0) c[k]=v;
+  }
+  return c;
+}
+
 /* ---------- combat ---------- */
+function nearestEnemy(x,y,range){
+  let tgt=null, bd=range;
+  for(const e of G.enemies){
+    const d=Math.hypot(e.x-x, e.cy-y);
+    if(d<bd){ bd=d; tgt=e; }
+  }
+  return tgt;
+}
+/* velocity that lobs a shot from (x,y) onto (tx,ty) */
+function lob(x,y,tx,ty,spd,grav){
+  const dx=tx-x, dy=ty-y;
+  const t=Math.max(0.14, Math.hypot(dx,dy)/spd);
+  return {vx:dx/t, vy:dy/t - 0.5*grav*t};
+}
 function fire(){
   const w=wstats(G.cur), p=G.player;
   const px=p.x, py=GROUND-14;
-  const range=w.spd*w.life*0.85+30;
-  let tgt=null, bd=1e9;
-  for(const e of G.enemies){
-    const d=Math.hypot(e.x-px, e.cy-py);
-    if(d<range && d<bd){ bd=d; tgt=e; }
-  }
+  const tgt=nearestEnemy(px, py, w.spd*w.life*0.85+30);
   let vx,vy;
   if(tgt){
-    const dx=tgt.x-px, dy=tgt.cy-py;
-    const t=Math.max(0.14, Math.hypot(dx,dy)/w.spd);
-    vx=dx/t; vy=dy/t - 0.5*w.grav*t;
-    p.face = dx<0?-1:1;
+    ({vx,vy}=lob(px,py,tgt.x,tgt.cy,w.spd,w.grav));
+    p.face = tgt.x<px?-1:1;
   }else{
     vx=p.face*w.spd; vy=-w.grav*0.16-8;
   }
@@ -554,8 +626,13 @@ function hurtPlayer(dmg,fromX){
 /* ---------- workbench panel ---------- */
 const panelEl=document.getElementById('panel');
 let panelOpen=false;
-function openPanel(){ panelOpen=true; panelEl.classList.remove('hidden'); renderPanel(); }
-function closePanel(){ panelOpen=false; panelEl.classList.add('hidden'); }
+/* null = the workbench at the fire, otherwise the build pad we walked up to */
+let curPad=null;
+function openPanel(pad){
+  curPad=pad||null; panelOpen=true;
+  panelEl.classList.remove('hidden'); renderPanel();
+}
+function closePanel(){ panelOpen=false; curPad=null; panelEl.classList.add('hidden'); }
 document.getElementById('closeP').addEventListener('pointerdown',e=>{ e.stopPropagation(); closePanel(); });
 panelEl.addEventListener('pointerdown',e=>{ if(e.target===panelEl) closePanel(); });
 
@@ -577,6 +654,14 @@ function renderPanel(){
        '<div class="ds">'+ds+(cost?'<br>'+chipHTML(cost):'')+'</div></div>'+
        '<button class="buy" data-act="'+act+'"'+(ok?'':' disabled')+'>'+btn+'</button></div>';
   };
+  document.getElementById('pTitle').innerHTML =
+    curPad ? '&#9635; BUILD SITE' : '&#9673; WORKBENCH';
+  if(curPad){
+    padRows(row);
+    document.getElementById('pRows').innerHTML=h;
+    wireBuys();
+    return;
+  }
   for(const id of WORDER){
     const d=WDEF[id], lv=G.levels[id];
     if(lv===0){
@@ -599,9 +684,34 @@ function renderPanel(){
   const bc={wood:Math.ceil(20*Math.pow(1.6,G.capLv))};
   row('BIGGER BAG', 'CARRY +5 MORE LOOT. NOW: '+G.cap, bc, 'bag', canAfford(bc), 'SEW');
   document.getElementById('pRows').innerHTML=h;
+  wireBuys();
+}
+function wireBuys(){
   document.querySelectorAll('#pRows .buy').forEach(b=>{
     b.addEventListener('pointerdown',ev=>{ ev.stopPropagation(); doBuy(b.dataset.act); });
   });
+}
+function padRows(row){
+  const b=curPad.b;
+  const where=Math.abs(curPad.x-BASE_X)+'M '+(curPad.x<BASE_X?'WEST':'EAST')+' OF THE FIRE';
+  if(!b){
+    for(const t of BORDER){
+      const d=BDEF[t];
+      const st=d.desc+'<br>'+d.hp+' HP'+
+        (t==='turret'?' / DMG '+d.dmg+' / '+d.rate+' PER SEC / RANGE '+d.range:'');
+      row(d.name, st, d.cost, 'build:'+t, canAfford(d.cost), 'BUILD');
+    }
+    row('EMPTY PAD', where+'.<br>NOTHING STANDS HERE YET.', null, 'x', false, '&mdash;');
+    return;
+  }
+  const d=BDEF[b.type];
+  const hurt=b.hp<b.maxhp;
+  const rc=repairCost(curPad);
+  row(d.name+' <span class="lv">'+Math.ceil(b.hp)+'/'+b.maxhp+' HP</span>', where+'.', null, 'x', false, '&mdash;');
+  row('REPAIR', hurt?'PATCH IT BACK TO FULL.':'NO DAMAGE TO PATCH.', hurt?rc:null,
+      'fix', hurt&&canAfford(rc), 'REPAIR');
+  row('SALVAGE', 'TEAR IT DOWN AND GET HALF THE MATERIALS BACK.', salvageValue(b.type),
+      'scrap', true, 'SALVAGE');
 }
 function doBuy(act){
   const [kind,id]=act.split(':');
@@ -619,6 +729,25 @@ function doBuy(act){
     if(!canAfford({stone:12})||G.base.hp>=G.base.maxhp) return SFX.denied();
     pay({stone:12}); G.base.hp=Math.min(G.base.maxhp,G.base.hp+25);
     SFX.craft(); floater(BASE_X,GROUND-40,'+25 CAMP','#5a9e3c');
+  }else if(kind==='build'){
+    const c=BDEF[id].cost;
+    if(!curPad || curPad.b || !canAfford(c)) return SFX.denied();
+    pay(c);
+    curPad.b={type:id, hp:BDEF[id].hp, maxhp:BDEF[id].hp, cool:0, flash:0, kick:0};
+    SFX.craft(); floater(curPad.x,GROUND-36,BDEF[id].name+'!','#ffb347');
+  }else if(kind==='fix'){
+    if(!curPad || !curPad.b || curPad.b.hp>=curPad.b.maxhp) return SFX.denied();
+    const c=repairCost(curPad);
+    if(!canAfford(c)) return SFX.denied();
+    pay(c); curPad.b.hp=curPad.b.maxhp;
+    SFX.craft(); floater(curPad.x,GROUND-36,'PATCHED','#5a9e3c');
+  }else if(kind==='scrap'){
+    if(!curPad || !curPad.b) return SFX.denied();
+    const back=salvageValue(curPad.b.type);
+    for(const k in back) G.stored[k]+=back[k];
+    curPad.b=null;
+    SFX.gather(); floater(curPad.x,GROUND-36,'SALVAGED','#c98a4b');
+    burstParts(curPad.x,GROUND-10,'#8a5a30',10,55);
   }else if(kind==='bag'){
     const c={wood:Math.ceil(20*Math.pow(1.6,G.capLv))};
     if(!canAfford(c)) return SFX.denied();
@@ -635,6 +764,8 @@ const TIPS=[
   {at:8, txt:'✦ NEAR TREES + ROCKS TO GATHER'},
   {at:16,txt:'CARRY LOOT HOME TO STORE IT'},
   {at:23,txt:'✦ AT THE FIRE TO OPEN WORKBENCH'},
+  {at:34,txt:'✦ ON A BUILD PAD TO RAISE DEFENSES'},
+  {at:46,txt:'TURRETS FIGHT WHILE YOU GATHER'},
 ];
 function update(dt){
   G.t+=dt;
@@ -670,7 +801,8 @@ function update(dt){
     let node=null;
     for(const n of G.nodes)
       if(n.amount>0 && Math.abs(n.x-p.x)<15){ node=n; break; }
-    ctxLabel(node?'GATHER':(nearBase?'BUILD':''));
+    const pad = (!nearBase && !node) ? padNear(p.x) : null;
+    ctxLabel(node?'GATHER':(nearBase?'BUILD':(pad?(pad.b?'REPAIR':'BUILD'):'')));
     if(node && input.action){
       p.harvT+=dt;
       if(p.harvT>=0.4){
@@ -686,7 +818,7 @@ function update(dt){
         burstParts(node.x,GROUND-8,node.type==='tree'?'#5a9e3c':node.type==='rock'?'#8a8175':'#5fe0d8',5,35);
       }
     }else if(!input.action) p.harvT=0;
-    if(actionEdge && !node && nearBase) openPanel();
+    if(actionEdge && !node && (nearBase||pad)) openPanel(nearBase?null:pad);
   }
 
   /* --- node respawn --- */
@@ -725,17 +857,39 @@ function update(dt){
       }
     }else{
       const chasing = pAlive && Math.abs(p.x-e.x)<52;
-      const tx=chasing?p.x:BASE_X, stop=chasing?7:32;
+      let tx=chasing?p.x:BASE_X, stop=chasing?7:32;
+      /* a barricade in the way is what they hit instead */
+      const blk=blockerFor(e.x,tx);
+      if(blk){ tx=blk.x; stop=10; }
       const dx=tx-e.x;
       if(Math.abs(dx)>stop) e.x+=Math.sign(dx)*e.spd*dt;
       else if(e.atkT<=0){
         e.atkT=e.cd;
-        if(chasing) hurtPlayer(e.dmg,e.x);
+        if(blk){ hurtBuild(blk,e.bdmg); shake=1.5; SFX.hit(); }
+        else if(chasing) hurtPlayer(e.dmg,e.x);
         else{ G.base.hp-=e.bdmg; shake=2.5; SFX.hit();
               burstParts(BASE_X+rnd(-14,14),GROUND-rnd(6,20),'#ffb347',4,40); }
       }
     }
     if(e.hp<=0){ killEnemy(e); G.enemies.splice(i,1); }
+  }
+
+  /* --- defenses --- */
+  for(const pd of G.pads){
+    const b=pd.b; if(!b) continue;
+    b.flash=Math.max(0,b.flash-dt);
+    b.kick=Math.max(0,b.kick-dt);
+    if(b.type!=='turret') continue;
+    b.cool-=dt;
+    if(b.cool>0) continue;
+    const d=BDEF.turret, ty=GROUND-17;
+    const tgt=nearestEnemy(pd.x, ty, d.range);
+    if(!tgt) continue;
+    const v=lob(pd.x, ty, tgt.x, tgt.cy, d.spd, d.grav);
+    G.projs.push({x:pd.x, y:ty, vx:v.vx, vy:v.vy, g:d.grav,
+                  dmg:d.dmg, life:d.life, size:2, col:'#c8b89a'});
+    b.cool=1/d.rate; b.kick=0.12;
+    SFX.sling();
   }
 
   /* --- projectiles --- */
@@ -869,6 +1023,30 @@ function render(){
     if(n.amount>0 && n.amount<n.max && Math.abs(n.x-G.player.x)<15){
       ctx.fillStyle='#0c0a14'; ctx.fillRect(n.x-6,GROUND-26,12,3);
       ctx.fillStyle='#ffb347'; ctx.fillRect(n.x-5,GROUND-25,Math.ceil(10*n.amount/n.max),1);
+    }
+  }
+
+  /* build pads + defenses (drawn under enemies so a foe chewing on a wall reads clearly) */
+  for(const pd of G.pads){
+    const b=pd.b;
+    if(!b){
+      const near=Math.abs(pd.x-G.player.x)<14;
+      ctx.fillStyle=near?'#8a7a5f':'#4a3826';
+      for(let i=-6;i<=6;i+=3) ctx.fillRect(pd.x+i,GROUND-1,2,1);
+      ctx.fillRect(pd.x-8,GROUND-5,1,4); ctx.fillRect(pd.x+7,GROUND-5,1,4);
+      if(near){ ctx.fillStyle='#ffb347'; ctx.fillRect(pd.x-8,GROUND-6,16,1); }
+      continue;
+    }
+    const spr=b.type==='wall'?BARRIER:TURRET;
+    const by=GROUND-spr.h+(b.kick>0?1:0), bx=pd.x-Math.floor(spr.w/2);
+    if(b.flash>0){
+      ctx.fillStyle='#fff';
+      for(const q of spr.px) ctx.fillRect(F(bx)+q[0],F(by)+q[1],1,1);
+    }else drawSpr(spr,bx,by,pd.x<BASE_X);
+    if(b.hp<b.maxhp){
+      ctx.fillStyle='#0c0a14'; ctx.fillRect(F(pd.x)-6,F(by)-5,12,3);
+      ctx.fillStyle=b.hp/b.maxhp<0.35?'#ff5a3c':'#5a9e3c';
+      ctx.fillRect(F(pd.x)-5,F(by)-4,Math.max(1,Math.round(10*b.hp/b.maxhp)),1);
     }
   }
 
@@ -1156,6 +1334,44 @@ const BAG=mkSpr([
 'tttttt',
 'tttttt',
 '.tttt.'],{t:'#8a5a30',k:'#d8c9a0'});
+const BARRIER=mkSpr([
+'.d...d...d...d.',
+'dDd.dDd.dDd.dDd',
+'dDd.dDd.dDd.dDd',
+'ppppppppppppppp',
+'pPpppPpppPpppPp',
+'dDd.dDd.dDd.dDd',
+'dDd.dDd.dDd.dDd',
+'dDd.dDd.dDd.dDd',
+'dDd.dDd.dDd.dDd',
+'ppppppppppppppp',
+'pPpppPpppPpppPp',
+'dDd.dDd.dDd.dDd',
+'dDd.dDd.dDd.dDd',
+'dDd.dDd.dDd.dDd',
+'dDd.dDd.dDd.dDd',
+'dDdddDdddDdddDd'],{d:'#43301c',D:'#7a4f28',p:'#8a5a30',P:'#5a3d26'});
+const TURRET=mkSpr([
+'..y.....y..',
+'..y.....y..',
+'...y...y...',
+'....yyy....',
+'....yby....',
+'.....y.....',
+'...ttttt...',
+'..tTTTTTt..',
+'..tTTsTTt..',
+'..tTTTTTt..',
+'...ttttt...',
+'....ppp....',
+'....pPp....',
+'....ppp....',
+'....pPp....',
+'....ppp....',
+'...ppppp...',
+'..pp...pp..',
+'.pp.....pp.',
+'pp.......pp'],{y:'#c9b891',b:'#ff5a3c',t:'#57503f',T:'#8a8175',s:'#b0a494',p:'#6b431f',P:'#8a5a30'});
 const ICONS={
   wood:  mkSpr(['kkkkk','kKkKk','kkkkk'],{k:'#c98a4b',K:'#8a5a30'}),
   stone: mkSpr(['.sss.','sssss','.sss.'],{s:'#b0a494'}),
