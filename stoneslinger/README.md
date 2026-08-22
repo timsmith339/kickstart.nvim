@@ -50,3 +50,37 @@ python3 -m http.server 8000
 
 Landscape orientation recommended. On iOS/Android you can "Add to Home Screen"
 for a fullscreen app feel.
+
+## Developing
+
+`index.html` is the whole game. Rough layout of the script:
+
+| Section | What's in it |
+| --- | --- |
+| setup | canvas sizing, audio, sprite helpers |
+| weapons / difficulty | `WDEF`, `DIFFS`, stat scaling |
+| state | `initGame()`, input binding, the weapon rail |
+| sim | `update()` — player, gathering, spawner, enemies, projectiles |
+| render | `render()`, `drawBase()`, `drawHUD()` |
+| sprite bank | pixel data for every sprite, parked at the bottom |
+
+The sprite bank sits below the game loop on purpose: it's ~120 lines of pure
+data you never edit while working on gameplay. Nothing reads it until the first
+frame, which runs after the script has finished evaluating.
+
+### Tests
+
+`test/smoke.js` drives the real page in headless Chromium and checks the title
+screen, difficulty selection, the weapon rail, gathering, banking loot, combat,
+and the game-over/retry path — plus that the run produced no JavaScript errors.
+Where it can it steps the simulation by calling `update(dt)` directly rather
+than sleeping, so it's fast and doesn't flake.
+
+```sh
+cd stoneslinger
+node test/smoke.js            # 32 checks, exits non-zero on failure
+node test/smoke.js --headed   # watch it run
+```
+
+It needs [Playwright](https://playwright.dev) (`npm i -D playwright`, or a
+global install — the test finds either). Run it before publishing a change.

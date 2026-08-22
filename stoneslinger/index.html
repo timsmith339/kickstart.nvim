@@ -260,7 +260,7 @@ document.getElementById('mute').addEventListener('pointerdown',e=>{
   document.getElementById('mute').textContent = muted?'×':'♬';
 });
 
-/* ---------- sprites ---------- */
+/* ---------- sprite helpers ---------- */
 function mkSpr(rows,pal){
   const px=[];
   rows.forEach((r,y)=>{ for(let x=0;x<r.length;x++){ const c=r[x];
@@ -274,109 +274,6 @@ function drawSpr(s,x,y,flip){
     ctx.fillRect(x+(flip?s.w-1-p[0]:p[0]), y+p[1], 1,1);
   }
 }
-const heroPal={h:'#3a2416',s:'#e0a878',e:'#1a1410',t:'#8a5a30',d:'#6b431f',p:'#4a3524',b:'#2c211a'};
-const HERO_A=mkSpr([
-'...hhhh...',
-'..hhhhhh..',
-'..ssssse..',
-'..hsssss..',
-'...tttt...',
-'..tttttt..',
-'.sttddtts.',
-'..tttttt..',
-'...pppp...',
-'...p..p...',
-'...p..p...',
-'...b..b...'],heroPal);
-const HERO_B=mkSpr([
-'...hhhh...',
-'..hhhhhh..',
-'..ssssse..',
-'..hsssss..',
-'...tttt...',
-'..tttttt..',
-'.sttddtts.',
-'..tttttt..',
-'...pppp...',
-'..p....p..',
-'..p....p..',
-'..b....b..'],heroPal);
-const GRUB=mkSpr([
-'...gggg...',
-'..gggggg..',
-'.gggggggg.',
-'.gweggwegg',
-'gggggggggg',
-'.G.G..G.G.'],{g:'#5a9e3c',G:'#3f7529',w:'#e8e4d8',e:'#141410'});
-const BRUTE=mkSpr([
-'...rrrrrr...',
-'..rrrrrrrr..',
-'..rerrrrer..',
-'.rrrrrrrrrr.',
-'rrRRrrrrRRrr',
-'rrRRrrrrRRrr',
-'.rrrrrrrrrr.',
-'.rRrrrrrrRr.',
-'.rRr.rr.rRr.',
-'.RRr.rr.rRR.',
-'..R..RR..R..',
-'.RR..RR..RR.'],{r:'#7d7468',R:'#57503f',e:'#ff5a3c'});
-const BAT=mkSpr([
-'B.........B',
-'BB..bbb..BB',
-'.BBbbbbbBB.',
-'..bbebbeb..',
-'...bbbbb...',
-'....b.b....'],{b:'#7a5296',B:'#4f3266',e:'#ffd23c'});
-const TREE=mkSpr([
-'....LLLLLL....',
-'..LLLLllLLLL..',
-'.LLllLLLLLlLL.',
-'.LLLLLllLLLLL.',
-'LLlLLLLLLLlLLL',
-'LLLLLllLLLLLLL',
-'.LLLLLLLLllLL.',
-'..LLlLLLLLLL..',
-'....LLLLLL....',
-'......kK......',
-'......kK......',
-'......kK......',
-'.....KkKK.....'],{L:'#3f7529',l:'#5a9e3c',k:'#5a3d22',K:'#43301c'});
-const STUMP=mkSpr([
-'.kkkK.',
-'.kKkK.',
-'KkKKKk'],{k:'#5a3d22',K:'#43301c'});
-const ROCKN=mkSpr([
-'....ss......',
-'..sssss.ss..',
-'.sssSssssss.',
-'ssSSsssSSsss',
-'ssssssssssss'],{s:'#8a8175',S:'#6b6157'});
-const RUBBLE=mkSpr([
-'..s...s.....',
-'s..ss....s..'],{s:'#6b6157'});
-const CRYST=mkSpr([
-'....c....',
-'...cWc...',
-'..ccWcc..',
-'.cCcWccc.',
-'.cCccccC.',
-'..CccCC..',
-'..cC.Cc..',
-'...C.C...'],{c:'#5fe0d8',C:'#2ea8a0',W:'#d8fffb'});
-const BAG=mkSpr([
-'..kk..',
-'.tttt.',
-'tttttt',
-'tttttt',
-'.tttt.'],{t:'#8a5a30',k:'#d8c9a0'});
-const ICONS={
-  wood:  mkSpr(['kkkkk','kKkKk','kkkkk'],{k:'#c98a4b',K:'#8a5a30'}),
-  stone: mkSpr(['.sss.','sssss','.sss.'],{s:'#b0a494'}),
-  crystal:mkSpr(['..c..','.ccc.','.cWc.'],{c:'#5fe0d8',W:'#fff'}),
-  heart: mkSpr(['h.h','hhh','.h.'],{h:'#ff5a3c'}),
-  home:  mkSpr(['.r.','rrr','wdw'],{r:'#8a5a30',w:'#6b6157',d:'#ffb347'}),
-};
 
 /* ---------- weapons ---------- */
 const WDEF={
@@ -1156,6 +1053,116 @@ function loop(now){
   render();
 }
 requestAnimationFrame(loop);
+
+/* ============================================================
+   SPRITE BANK - pixel data only, no logic.
+   Parked at the bottom so it stays out of the way while editing
+   gameplay. Safe here: nothing reads these until the first frame,
+   which runs after this script has finished evaluating.
+   ============================================================ */
+const heroPal={h:'#3a2416',s:'#e0a878',e:'#1a1410',t:'#8a5a30',d:'#6b431f',p:'#4a3524',b:'#2c211a'};
+const HERO_A=mkSpr([
+'...hhhh...',
+'..hhhhhh..',
+'..ssssse..',
+'..hsssss..',
+'...tttt...',
+'..tttttt..',
+'.sttddtts.',
+'..tttttt..',
+'...pppp...',
+'...p..p...',
+'...p..p...',
+'...b..b...'],heroPal);
+const HERO_B=mkSpr([
+'...hhhh...',
+'..hhhhhh..',
+'..ssssse..',
+'..hsssss..',
+'...tttt...',
+'..tttttt..',
+'.sttddtts.',
+'..tttttt..',
+'...pppp...',
+'..p....p..',
+'..p....p..',
+'..b....b..'],heroPal);
+const GRUB=mkSpr([
+'...gggg...',
+'..gggggg..',
+'.gggggggg.',
+'.gweggwegg',
+'gggggggggg',
+'.G.G..G.G.'],{g:'#5a9e3c',G:'#3f7529',w:'#e8e4d8',e:'#141410'});
+const BRUTE=mkSpr([
+'...rrrrrr...',
+'..rrrrrrrr..',
+'..rerrrrer..',
+'.rrrrrrrrrr.',
+'rrRRrrrrRRrr',
+'rrRRrrrrRRrr',
+'.rrrrrrrrrr.',
+'.rRrrrrrrRr.',
+'.rRr.rr.rRr.',
+'.RRr.rr.rRR.',
+'..R..RR..R..',
+'.RR..RR..RR.'],{r:'#7d7468',R:'#57503f',e:'#ff5a3c'});
+const BAT=mkSpr([
+'B.........B',
+'BB..bbb..BB',
+'.BBbbbbbBB.',
+'..bbebbeb..',
+'...bbbbb...',
+'....b.b....'],{b:'#7a5296',B:'#4f3266',e:'#ffd23c'});
+const TREE=mkSpr([
+'....LLLLLL....',
+'..LLLLllLLLL..',
+'.LLllLLLLLlLL.',
+'.LLLLLllLLLLL.',
+'LLlLLLLLLLlLLL',
+'LLLLLllLLLLLLL',
+'.LLLLLLLLllLL.',
+'..LLlLLLLLLL..',
+'....LLLLLL....',
+'......kK......',
+'......kK......',
+'......kK......',
+'.....KkKK.....'],{L:'#3f7529',l:'#5a9e3c',k:'#5a3d22',K:'#43301c'});
+const STUMP=mkSpr([
+'.kkkK.',
+'.kKkK.',
+'KkKKKk'],{k:'#5a3d22',K:'#43301c'});
+const ROCKN=mkSpr([
+'....ss......',
+'..sssss.ss..',
+'.sssSssssss.',
+'ssSSsssSSsss',
+'ssssssssssss'],{s:'#8a8175',S:'#6b6157'});
+const RUBBLE=mkSpr([
+'..s...s.....',
+'s..ss....s..'],{s:'#6b6157'});
+const CRYST=mkSpr([
+'....c....',
+'...cWc...',
+'..ccWcc..',
+'.cCcWccc.',
+'.cCccccC.',
+'..CccCC..',
+'..cC.Cc..',
+'...C.C...'],{c:'#5fe0d8',C:'#2ea8a0',W:'#d8fffb'});
+const BAG=mkSpr([
+'..kk..',
+'.tttt.',
+'tttttt',
+'tttttt',
+'.tttt.'],{t:'#8a5a30',k:'#d8c9a0'});
+const ICONS={
+  wood:  mkSpr(['kkkkk','kKkKk','kkkkk'],{k:'#c98a4b',K:'#8a5a30'}),
+  stone: mkSpr(['.sss.','sssss','.sss.'],{s:'#b0a494'}),
+  crystal:mkSpr(['..c..','.ccc.','.cWc.'],{c:'#5fe0d8',W:'#fff'}),
+  heart: mkSpr(['h.h','hhh','.h.'],{h:'#ff5a3c'}),
+  home:  mkSpr(['.r.','rrr','wdw'],{r:'#8a5a30',w:'#6b6157',d:'#ffb347'}),
+};
 </script>
 <!--ARTIFACT-END-->
 </body>
